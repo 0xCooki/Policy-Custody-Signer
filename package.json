@@ -1,0 +1,39 @@
+{
+  "name": "policy-custody-signer",
+  "version": "1.0.0",
+  "description": "Policy-gated custody signer with HSM/MPC adapters, maker-checker approvals, and hash-chained audit",
+  "license": "MIT",
+  "author": "0xCooki",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/api/index.ts",
+    "build": "tsc && tsc-alias",
+    "lint:check": "biome check .",
+    "lint:fix": "biome check --write .",
+    "start": "node dist/api/index.js",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.5.6",
+    "@types/better-sqlite3": "9.6.0",
+    "@types/node": "26.1.2",
+    "tsc-alias": "^1.9.1",
+    "tsx": "4.23.4",
+    "typescript": "7.0.2",
+    "vitest": "4.1.10"
+  },
+  "dependencies": {
+    "@hono/node-server": "^2.0.12",
+    "better-sqlite3": "13.0.2",
+    "dotenv": "17.4.2",
+    "hono": "4.12.33",
+    "viem": "2.55.10"
+  },
+  "packageManager": "pnpm@11.18.0",
+  "engines": {
+    "node": ">=25.0.0",
+    "pnpm": ">=11.0.0"
+  }
+}
