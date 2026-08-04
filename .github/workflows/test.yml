@@ -28,8 +28,32 @@ jobs:
 
       - run: pnpm typecheck
 
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+
+      - name: Start Anvil
+        run: |
+          anvil --host 127.0.0.1 --port 8545 &
+          for i in $(seq 1 30); do
+            if cast block-number --rpc-url http://127.0.0.1:8545 >/dev/null 2>&1; then
+              echo "anvil is up"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "anvil failed to start"
+          exit 1
+
+      - run: pnpm typecheck
+
       - run: pnpm lint:check
 
       - run: pnpm test
-
+        env:
+          LOCAL_PRIVATE_KEY: "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
+          RPC_URL: "http://127.0.0.1:8545"
+          CHAIN_ID: "31337"
+          DATABASE_PATH: "./data/test-custody.db"
+          SIGNER_BACKEND: "local"
+      
       - run: pnpm build
