@@ -20,10 +20,11 @@ export type TransferIntent = {
   id: string;
   fromWalletId: string;
   to: Address;
-  valueWei: bigint;
+  value: bigint;
   asset: "ETH";
   initiatorId: string;
   status: IntentStatus;
+  txHash?: Hex;
   createdAt: string;
 };
 

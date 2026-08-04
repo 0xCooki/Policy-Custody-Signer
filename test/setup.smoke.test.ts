@@ -22,7 +22,7 @@ describe("repo setup", () => {
       id: "intent_1",
       fromWalletId: "wallet_1",
       to: "0x0000000000000000000000000000000000000002",
-      valueWei: 10n ** 18n,
+      value: 10n ** 18n,
       asset: "ETH",
       initiatorId: "initiator",
       status: "pending",
