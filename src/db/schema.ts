@@ -19,5 +19,23 @@ export function migrate(db: Db): void {
             tx_hash TEXT,
             created_at TEXT NOT NULL
         );
+
+        CREATE TABLE IF NOT EXISTS approvals (
+            id TEXT PRIMARY KEY NOT NULL,
+            intent_id TEXT NOT NULL,
+            approver_id TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            UNIQUE (intent_id, approver_id)
+        );
+
+        CREATE TABLE IF NOT EXISTS audit_events (
+            id TEXT PRIMARY KEY NOT NULL,
+            type TEXT NOT NULL,
+            payload TEXT NOT NULL,
+            actor TEXT NOT NULL,
+            timestamp TEXT NOT NULL,
+            prev_hash TEXT,
+            event_hash TEXT NOT NULL
+        );
     `);
 }

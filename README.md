@@ -11,7 +11,7 @@ cp .env.example .env
 pnpm install
 ```
 
-Anvil is required for the unsafe signing flow and for `pnpm test`:
+Anvil is required for the gated signing flow and for `pnpm test`:
 
 ```bash
 # terminal A
@@ -21,6 +21,16 @@ anvil
 pnpm test
 pnpm dev
 ```
+
+### Flow
+
+1. **Create intent** — `initiator` API key  
+2. **Approve** — `approver` API key (maker ≠ checker; quorum from policy)  
+3. **Execute** — `approver` or `admin` — LocalKey sign → broadcast → confirm  
+
+Auth header: `Authorization: Bearer <key>` using keys from `.env` / `.env.example` (defaults: `dev-initiator`, `dev-approver`, `dev-admin`).
+
+Policy (`POLICY_MAX_VALUE`, `POLICY_ALLOWLIST`, `POLICY_QUORUM`) is evaluated on create; destinations must be allowlisted.
 
 Health check: `GET http://localhost:3000/health`
 

@@ -3,12 +3,12 @@ import { config } from "src/config.js";
 import type { TransferIntent } from "src/domain/types.js";
 import { describe, expect, it } from "vitest";
 
-describe("repo setup", () => {
-  it("loads config with a selectable signer backend", () => {
+describe("Repo Setup", () => {
+  it("Loads config with a selectable signer backend", () => {
     expect(["local", "softhsm", "mock-mpc"]).toContain(config.signerBackend);
   });
 
-  it("responds to GET /health", async () => {
+  it("Responds to GET /health", async () => {
     const res = await app.request("/health");
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({
@@ -17,7 +17,7 @@ describe("repo setup", () => {
     });
   });
 
-  it("shapes a transfer intent as native ETH", () => {
+  it("Shapes a transfer intent as native ETH", () => {
     const intent: TransferIntent = {
       id: "intent_1",
       fromWalletId: "wallet_1",
