@@ -13,6 +13,7 @@
     "lint:fix": "biome check --write .",
     "start": "node dist/api/index.js",
     "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit"
   },
@@ -20,6 +21,8 @@
     "@biomejs/biome": "2.5.6",
     "@types/better-sqlite3": "9.6.0",
     "@types/node": "26.1.2",
+    "@vitest/coverage-v8": "4.1.10",
+    "fast-check": "4.9.0",
     "tsc-alias": "1.9.1",
     "tsx": "4.23.4",
     "typescript": "7.0.2",

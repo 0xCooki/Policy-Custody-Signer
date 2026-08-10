@@ -67,3 +67,14 @@ export function getIntent(db: Db, id: string): TransferIntent | undefined {
 export function updateIntentExecution(db: Db, id: string, status: IntentStatus, txHash: Hex): void {
   db.prepare(`UPDATE intents SET status = ?, tx_hash = ? WHERE id = ?`).run(status, txHash, id);
 }
+
+export function updateIntentStatus(db: Db, id: string, status: IntentStatus): void {
+  db.prepare(`UPDATE intents SET status = ? WHERE id = ?`).run(status, id);
+}
+
+export function claimIntentForExecution(db: Db, id: string): boolean {
+  const result = db
+    .prepare(`UPDATE intents SET status = ? WHERE id = ? AND status = ?`)
+    .run("broadcast", id, "approved");
+  return result.changes === 1;
+}
