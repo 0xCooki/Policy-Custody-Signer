@@ -15,11 +15,18 @@ export default defineConfig({
   test: {
     include: ["test/**/*.test.ts"],
     setupFiles: ["test/setupEnv.ts"],
+    fileParallelism: false,
     coverage: {
       provider: "v8",
       reporter: ["text", "html", "lcov"],
       include: ["src/**/*.ts"],
       exclude: ["src/**/*.test.ts"],
+      thresholds: {
+        lines: 80,
+        statements: 80,
+        functions: 70,
+        branches: 70,
+      },
     },
   },
 });

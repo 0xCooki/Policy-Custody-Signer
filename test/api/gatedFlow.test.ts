@@ -3,7 +3,15 @@ import { verifyAuditChain } from "src/audit/verify.js";
 import { publicClient } from "src/chain/client.js";
 import { listAuditEvents } from "src/db/audit.js";
 import { openDb } from "src/db/client.js";
+import { AuditEventType, IntentStatus } from "src/domain/types.js";
 import { addressFromNumber } from "src/utils/address.js";
+import {
+  type ApproveJson,
+  type ExecuteJson,
+  type IntentJson,
+  readJson,
+  type WalletJson,
+} from "test/helpers/json.js";
 import { beforeAll, describe, expect, it } from "vitest";
 
 const adminHeaders = { Authorization: "Bearer dev-admin" };
@@ -23,13 +31,11 @@ describe("unsafe intent → sign → tx hash (Anvil required)", () => {
   });
 
   it("POST wallet → intent → approve → execute returns a tx hash", async () => {
-    // Post wallet
     const walletRes = await app.request("/wallets", { method: "POST", headers: adminHeaders });
     expect(walletRes.status).toBe(201);
-    const wallet = await walletRes.json();
+    const wallet = await readJson<WalletJson>(walletRes);
     expect(wallet.address).toMatch(/^0x/);
 
-    // Post Intent
     const intentRes = await app.request("/intents", {
       method: "POST",
       headers: initiatorHeaders,
@@ -40,32 +46,30 @@ describe("unsafe intent → sign → tx hash (Anvil required)", () => {
       }),
     });
     expect(intentRes.status).toBe(201);
-    const intent = await intentRes.json();
-    expect(intent.status).toBe("pending");
+    const intent = await readJson<IntentJson>(intentRes);
+    expect(intent.status).toBe(IntentStatus.Pending);
 
-    // Approve intent
     const approveRes = await app.request(`/intents/${intent.id}/approve`, {
       method: "POST",
       headers: approverHeaders,
     });
     expect(approveRes.status).toBe(200);
-    const approved = await approveRes.json();
-    expect(approved.intent.status).toBe("approved");
+    const approved = await readJson<ApproveJson>(approveRes);
+    expect(approved.intent.status).toBe(IntentStatus.Approved);
     expect(approved.quorumMet).toBe(true);
 
-    // Execute intent
     const execRes = await app.request(`/intents/${intent.id}/execute`, {
       method: "POST",
       headers: adminHeaders,
     });
     expect(execRes.status).toBe(200);
-    const body = await execRes.json();
+    const body = await readJson<ExecuteJson>(execRes);
     expect(body.txHash).toMatch(/^0x[0-9a-fA-F]+$/);
-    expect(body.intent.status).toBe("confirmed");
+    expect(body.intent.status).toBe(IntentStatus.Confirmed);
     expect(body.intent.txHash).toBe(body.txHash);
 
     const receipt = await publicClient.getTransactionReceipt({
-      hash: body.txHash,
+      hash: body.txHash as `0x${string}`,
     });
     expect(receipt.status).toBe("success");
 
@@ -73,11 +77,11 @@ describe("unsafe intent → sign → tx hash (Anvil required)", () => {
     expect(verifyAuditChain(events)).toBe(true);
     expect(events.map((e) => e.type)).toEqual(
       expect.arrayContaining([
-        "IntentCreated",
-        "IntentApproved",
-        "SignRequested",
-        "TxBroadcast",
-        "TxConfirmed",
+        AuditEventType.IntentCreated,
+        AuditEventType.IntentApproved,
+        AuditEventType.SignRequested,
+        AuditEventType.TxBroadcast,
+        AuditEventType.TxConfirmed,
       ]),
     );
   });

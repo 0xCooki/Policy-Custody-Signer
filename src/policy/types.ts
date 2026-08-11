@@ -1,3 +1,4 @@
+import type { PolicyReason } from "src/domain/types.js";
 import type { Address } from "src/signers/types.js";
 
 export type PolicyConfig = {
@@ -6,6 +7,6 @@ export type PolicyConfig = {
   quorum: number;
 };
 
-export type PolicyResult = { ok: true } | { ok: false; reason: string };
+export type PolicyResult = { ok: true } | { ok: false; reason: PolicyReason };
 
-export type ApproveResult = { ok: true; quorumMet: boolean } | { ok: false; reason: string };
+export type ApproveResult = { ok: true; quorumMet: boolean } | { ok: false; reason: PolicyReason };

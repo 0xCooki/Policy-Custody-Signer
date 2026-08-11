@@ -9,12 +9,21 @@ import { config } from "src/config.js";
 import { openDb } from "src/db/client.js";
 import { createIntent, getIntent } from "src/db/intents.js";
 import { createWallet, listWallets } from "src/db/wallets.js";
+import {
+  ApiErrorCode,
+  Asset,
+  AuditEventType,
+  IntentStatus,
+  PolicyReason,
+  Role,
+} from "src/domain/types.js";
 import { evaluateCreate } from "src/policy/engine.js";
 import type { PolicyConfig } from "src/policy/types.js";
 import { approveIntent } from "src/services/approveIntent.js";
 import { executeIntent } from "src/services/executeIntent.js";
 import { createSigner } from "src/signers/createSigner.js";
 import type { Address } from "src/signers/types.js";
+import { AppError } from "src/utils/errors.js";
 import { intentToJson } from "src/utils/json.js";
 
 const app = new Hono<AuthEnv>();
@@ -26,6 +35,23 @@ const policyConfig: PolicyConfig = {
   quorum: config.policy.quorum,
 };
 
+function statusForAppError(err: AppError): 400 | 403 | 404 | 409 | 422 {
+  switch (err.code) {
+    case ApiErrorCode.NotFound:
+      return 404;
+    case PolicyReason.SelfApproval:
+    case PolicyReason.DuplicateApproval:
+      return 403;
+    case ApiErrorCode.AlreadyClaimed:
+      return 409;
+    case PolicyReason.ValueOverMax:
+    case PolicyReason.ToNotAllowed:
+      return 422;
+    default:
+      return 400;
+  }
+}
+
 app.get("/health", (c) =>
   c.json({
     ok: true,
@@ -34,7 +60,7 @@ app.get("/health", (c) =>
 );
 
 // Creates the same wallet with a different id each call
-app.post("/wallets", authMiddleware, requireRole("admin"), async (c) => {
+app.post("/wallets", authMiddleware, requireRole(Role.Admin), async (c) => {
   const address = await signer.getAddress();
   const wallet = createWallet(db, {
     id: randomUUID(),
@@ -44,10 +70,10 @@ app.post("/wallets", authMiddleware, requireRole("admin"), async (c) => {
   return c.json(wallet, 201);
 });
 
-app.get("/wallets", authMiddleware, requireRole("admin"), (c) => c.json(listWallets(db)));
+app.get("/wallets", authMiddleware, requireRole(Role.Admin), (c) => c.json(listWallets(db)));
 
 // POST intents, body: { fromWalletId, to, value } where the value as string is in JSON
-app.post("/intents", authMiddleware, requireRole("initiator"), async (c) => {
+app.post("/intents", authMiddleware, requireRole(Role.Initiator), async (c) => {
   const body = await c.req.json<{
     fromWalletId: string;
     to: Address;
@@ -58,11 +84,12 @@ app.post("/intents", authMiddleware, requireRole("initiator"), async (c) => {
   const decision = evaluateCreate({ to: body.to, value: BigInt(body.value) }, policyConfig);
   if (!decision.ok) {
     appendAuditEvent(db, {
-      type: "PolicyRejected",
+      type: AuditEventType.PolicyRejected,
       payload: { reason: decision.reason, to: body.to, value: BigInt(body.value).toString() },
       actor: actor.actorId,
     });
-    return c.json({ error: decision.reason }, 422);
+    const err = new AppError(decision.reason);
+    return c.json({ error: err.code }, statusForAppError(err));
   }
 
   const intent = createIntent(db, {
@@ -70,13 +97,13 @@ app.post("/intents", authMiddleware, requireRole("initiator"), async (c) => {
     fromWalletId: body.fromWalletId,
     to: body.to,
     value: BigInt(body.value),
-    asset: "ETH",
+    asset: Asset.Eth,
     initiatorId: actor.actorId,
-    status: "pending",
+    status: IntentStatus.Pending,
     createdAt: new Date().toISOString(),
   });
   appendAuditEvent(db, {
-    type: "IntentCreated",
+    type: AuditEventType.IntentCreated,
     payload: { intentId: intent.id, to: body.to, value: BigInt(body.value).toString() },
     actor: actor.actorId,
   });
@@ -86,11 +113,11 @@ app.post("/intents", authMiddleware, requireRole("initiator"), async (c) => {
 
 app.get("/intents/:id", authMiddleware, (c) => {
   const intent = getIntent(db, c.req.param("id"));
-  if (!intent) return c.json({ error: "not found" }, 404);
+  if (!intent) return c.json({ error: ApiErrorCode.NotFound }, 404);
   return c.json(intentToJson(intent));
 });
 
-app.post("/intents/:id/approve", authMiddleware, requireRole("approver"), async (c) => {
+app.post("/intents/:id/approve", authMiddleware, requireRole(Role.Approver), async (c) => {
   const actor = c.get("actor");
   try {
     const result = approveIntent(db, policyConfig, {
@@ -102,27 +129,34 @@ app.post("/intents/:id/approve", authMiddleware, requireRole("approver"), async 
       quorumMet: result.quorumMet,
     });
   } catch (err) {
-    const message = err instanceof Error ? err.message : "approve failed";
-    if (message.includes("not found")) return c.json({ error: message }, 404);
-    if (message === "self_approval" || message === "duplicate_approval") {
-      return c.json({ error: message }, 403);
+    if (err instanceof AppError) {
+      return c.json({ error: err.code }, statusForAppError(err));
     }
+    const message = err instanceof Error ? err.message : "approve failed";
     return c.json({ error: message }, 400);
   }
 });
 
-app.post("/intents/:id/execute", authMiddleware, requireRole("approver", "admin"), async (c) => {
-  const actor = c.get("actor");
-  const intent = getIntent(db, c.req.param("id"));
-  if (!intent) return c.json({ error: "not found" }, 404);
-  try {
-    const result = await executeIntent(db, signer, intent.id, actor.actorId);
-    return c.json({ intent: intentToJson(result.intent), txHash: result.txHash });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : "execute failed";
-    return c.json({ error: message }, 404);
-  }
-});
+app.post(
+  "/intents/:id/execute",
+  authMiddleware,
+  requireRole(Role.Approver, Role.Admin),
+  async (c) => {
+    const actor = c.get("actor");
+    const intent = getIntent(db, c.req.param("id"));
+    if (!intent) return c.json({ error: ApiErrorCode.NotFound }, 404);
+    try {
+      const result = await executeIntent(db, signer, intent.id, actor.actorId);
+      return c.json({ intent: intentToJson(result.intent), txHash: result.txHash });
+    } catch (err) {
+      if (err instanceof AppError) {
+        return c.json({ error: err.code }, statusForAppError(err));
+      }
+      const message = err instanceof Error ? err.message : "execute failed";
+      return c.json({ error: message }, 500);
+    }
+  },
+);
 
 export { app };
 

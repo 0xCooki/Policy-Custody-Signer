@@ -28,6 +28,8 @@ jobs:
 
       - run: pnpm typecheck
 
+      - run: pnpm typecheck:tests
+
       - name: Install Foundry
         uses: foundry-rs/foundry-toolchain@v1
 
@@ -44,16 +46,22 @@ jobs:
           echo "anvil failed to start"
           exit 1
 
-      - run: pnpm typecheck
-
       - run: pnpm lint:check
 
-      - run: pnpm test
+      - run: pnpm test:coverage
         env:
           LOCAL_PRIVATE_KEY: "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
           RPC_URL: "http://127.0.0.1:8545"
           CHAIN_ID: "31337"
           DATABASE_PATH: "./data/test-custody.db"
           SIGNER_BACKEND: "local"
-      
+
+      - name: Upload coverage lcov
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-lcov
+          path: coverage/lcov.info
+          if-no-files-found: ignore
+
       - run: pnpm build

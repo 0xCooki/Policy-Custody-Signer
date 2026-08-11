@@ -1,5 +1,5 @@
 import type { Db } from "src/db/client.js";
-import type { IntentStatus, TransferIntent } from "src/domain/types.js";
+import { type Asset, IntentStatus, type TransferIntent } from "src/domain/types.js";
 import type { Address, Hex } from "src/signers/types.js";
 
 type IntentRow = {
@@ -20,7 +20,7 @@ function rowToIntent(row: IntentRow): TransferIntent {
     fromWalletId: row.from_wallet_id,
     to: row.to_address as Address,
     value: BigInt(row.value),
-    asset: row.asset as "ETH",
+    asset: row.asset as Asset,
     initiatorId: row.initiator_id,
     status: row.status as IntentStatus,
     txHash: (row.tx_hash as Hex | null) ?? undefined,
@@ -35,7 +35,7 @@ export function createIntent(
     fromWalletId: string;
     to: Address;
     value: bigint;
-    asset: "ETH";
+    asset: Asset;
     initiatorId: string;
     status: IntentStatus;
     createdAt: string;
@@ -75,6 +75,6 @@ export function updateIntentStatus(db: Db, id: string, status: IntentStatus): vo
 export function claimIntentForExecution(db: Db, id: string): boolean {
   const result = db
     .prepare(`UPDATE intents SET status = ? WHERE id = ? AND status = ?`)
-    .run("broadcast", id, "approved");
+    .run(IntentStatus.Broadcast, id, IntentStatus.Approved);
   return result.changes === 1;
 }

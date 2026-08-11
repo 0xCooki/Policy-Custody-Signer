@@ -2,7 +2,12 @@ import type { Address, Hex } from "viem";
 
 export type { Address, Hex };
 
-export type SignerBackend = "local" | "softhsm" | "mock-mpc";
+export const SignerBackend = {
+  Local: "local",
+  SoftHsm: "softhsm",
+  MockMpc: "mock-mpc",
+} as const;
+export type SignerBackend = (typeof SignerBackend)[keyof typeof SignerBackend];
 
 export type UnsignedTx = {
   to: Address;

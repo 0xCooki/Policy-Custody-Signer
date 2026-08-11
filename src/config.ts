@@ -1,6 +1,6 @@
 import "dotenv/config";
 
-import type { SignerBackend } from "src/signers/types.js";
+import { SignerBackend } from "src/signers/types.js";
 import { arrayFromCsv } from "src/utils/string.js";
 
 function envString(name: string, fallback: string): string {
@@ -15,10 +15,21 @@ function envInt(name: string, fallback: number): number {
   return n;
 }
 
+function envSignerBackend(name: string, fallback: SignerBackend): SignerBackend {
+  const raw = process.env[name];
+  if (raw === undefined || raw === "") return fallback;
+
+  const values = Object.values(SignerBackend) as string[];
+  if (!values.includes(raw)) {
+    throw new Error(`Invalid ${name}="${raw}". Expected one of: ${values.join(", ")}`);
+  }
+  return raw as SignerBackend;
+}
+
 export const config = {
   port: envInt("PORT", 3000),
   databasePath: envString("DATABASE_PATH", "./data/custody.db"),
-  signerBackend: envString("SIGNER_BACKEND", "local") as SignerBackend,
+  signerBackend: envSignerBackend("SIGNER_BACKEND", SignerBackend.Local),
   apiKeys: {
     initiators: envString("API_KEY_INITIATORS", "dev-initiator"),
     approvers: envString("API_KEY_APPROVERS", "dev-approver"),

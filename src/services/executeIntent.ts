@@ -10,7 +10,9 @@ import {
 } from "src/db/intents.js";
 import { getWallet } from "src/db/wallets.js";
 import type { TransferIntent } from "src/domain/types.js";
+import { ApiErrorCode, AuditEventType, IntentStatus } from "src/domain/types.js";
 import type { Hex, SignerProvider } from "src/signers/types.js";
+import { AppError } from "src/utils/errors.js";
 
 export async function executeIntent(
   db: Db,
@@ -20,19 +22,27 @@ export async function executeIntent(
 ): Promise<{ intent: TransferIntent; txHash: Hex }> {
   const claim = db.transaction(() => {
     const intent = getIntent(db, intentId);
-    if (!intent) throw new Error(`Intent not found: ${intentId}`);
-    if (intent.status !== "approved")
-      throw new Error(`Intent ${intentId} is ${intent.status}, expected approved`);
+    if (!intent) throw new AppError(ApiErrorCode.NotFound, `Intent not found: ${intentId}`);
+    if (intent.status !== IntentStatus.Approved) {
+      throw new AppError(
+        ApiErrorCode.InvalidStatus,
+        `Intent ${intentId} is ${intent.status}, expected ${IntentStatus.Approved}`,
+      );
+    }
 
     const wallet = getWallet(db, intent.fromWalletId);
-    if (!wallet) throw new Error(`Wallet not found: ${intent.fromWalletId}`);
+    if (!wallet)
+      throw new AppError(ApiErrorCode.NotFound, `Wallet not found: ${intent.fromWalletId}`);
 
     if (!claimIntentForExecution(db, intentId)) {
-      throw new Error(`Intent ${intentId} already claimed for execution`);
+      throw new AppError(
+        ApiErrorCode.AlreadyClaimed,
+        `Intent ${intentId} already claimed for execution`,
+      );
     }
 
     appendAuditEvent(db, {
-      type: "SignRequested",
+      type: AuditEventType.SignRequested,
       payload: {
         intentId,
       },
@@ -54,39 +64,43 @@ export async function executeIntent(
 
     txHash = await broadcastSignedTx(signedTx);
     appendAuditEvent(db, {
-      type: "TxBroadcast",
+      type: AuditEventType.TxBroadcast,
       payload: { intentId, txHash },
       actor: actorId,
     });
 
     await waitForTx(txHash);
 
-    updateIntentExecution(db, intentId, "confirmed", txHash);
+    updateIntentExecution(db, intentId, IntentStatus.Confirmed, txHash);
     appendAuditEvent(db, {
-      type: "TxConfirmed",
+      type: AuditEventType.TxConfirmed,
       payload: { intentId, txHash },
       actor: actorId,
     });
 
     const updatedIntent = getIntent(db, intentId);
-    if (!updatedIntent) throw new Error(`Intent missing after update: ${intentId}`);
+    if (!updatedIntent) {
+      throw new AppError(ApiErrorCode.NotFound, `Intent missing after update: ${intentId}`);
+    }
     return { intent: updatedIntent, txHash };
   } catch (err) {
+    if (err instanceof AppError) throw err;
+
     const message = err instanceof Error ? err.message : "execute failed";
 
     if (txHash === undefined) {
       // Build/sign failed: nothing sent and safe to retry
-      updateIntentStatus(db, intentId, "approved");
+      updateIntentStatus(db, intentId, IntentStatus.Approved);
       appendAuditEvent(db, {
-        type: "TxFailed",
+        type: AuditEventType.TxFailed,
         payload: { intentId, error: message },
         actor: actorId,
       });
     } else {
       // Broadcast may have landed: fail closed
-      updateIntentExecution(db, intentId, "failed", txHash);
+      updateIntentExecution(db, intentId, IntentStatus.Failed, txHash);
       appendAuditEvent(db, {
-        type: "TxFailed",
+        type: AuditEventType.TxFailed,
         payload: { intentId, error: message },
         actor: actorId,
       });

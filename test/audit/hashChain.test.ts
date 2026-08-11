@@ -2,6 +2,7 @@ import { appendAuditEvent } from "src/audit/log.js";
 import { verifyAuditChain } from "src/audit/verify.js";
 import { listAuditEvents } from "src/db/audit.js";
 import { openDb } from "src/db/client.js";
+import { AuditEventType } from "src/domain/types.js";
 import { describe, expect, it } from "vitest";
 
 const db = openDb(`./data/test-audit-${Date.now()}.db`);
@@ -9,18 +10,18 @@ const db = openDb(`./data/test-audit-${Date.now()}.db`);
 describe("Hash Chain", () => {
   it("appendAuditEvent appends events correctly", () => {
     appendAuditEvent(db, {
-      type: "IntentCreated",
-      payload: { intendId: "1" },
+      type: AuditEventType.IntentCreated,
+      payload: { intentId: "1" },
       actor: "dev-initiator",
     });
     appendAuditEvent(db, {
-      type: "IntentApproved",
-      payload: { intendId: "1" },
+      type: AuditEventType.IntentApproved,
+      payload: { intentId: "1" },
       actor: "dev-approver",
     });
     appendAuditEvent(db, {
-      type: "TxConfirmed",
-      payload: { intendId: "1" },
+      type: AuditEventType.TxConfirmed,
+      payload: { intentId: "1" },
       actor: "dev-approver",
     });
 
