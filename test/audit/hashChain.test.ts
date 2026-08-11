@@ -11,17 +11,17 @@ describe("Hash Chain", () => {
   it("appendAuditEvent appends events correctly", () => {
     appendAuditEvent(db, {
       type: AuditEventType.IntentCreated,
-      payload: { intendId: "1" },
+      payload: { intentId: "1" },
       actor: "dev-initiator",
     });
     appendAuditEvent(db, {
       type: AuditEventType.IntentApproved,
-      payload: { intendId: "1" },
+      payload: { intentId: "1" },
       actor: "dev-approver",
     });
     appendAuditEvent(db, {
       type: AuditEventType.TxConfirmed,
-      payload: { intendId: "1" },
+      payload: { intentId: "1" },
       actor: "dev-approver",
     });
 

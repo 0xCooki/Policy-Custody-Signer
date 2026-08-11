@@ -1,14 +1,11 @@
 import { randomUUID } from "node:crypto";
 import { app } from "src/api/index.js";
-import { config } from "src/config.js";
+import { createApproval } from "src/db/approvals.js";
 import { openDb } from "src/db/client.js";
 import { claimIntentForExecution, createIntent } from "src/db/intents.js";
 import { ApiErrorCode, Asset, IntentStatus, PolicyReason } from "src/domain/types.js";
-import type { PolicyConfig } from "src/policy/types.js";
-import { approveIntent } from "src/services/approveIntent.js";
-import type { Address } from "src/signers/types.js";
 import { addressFromNumber } from "src/utils/address.js";
-import { AppError } from "src/utils/errors.js";
+import { type IntentJson, readJson, type WalletJson } from "test/helpers/json.js";
 import { describe, expect, it } from "vitest";
 
 const adminHeaders = { Authorization: "Bearer dev-admin" };
@@ -18,16 +15,10 @@ const initiatorHeaders = {
 };
 const approverHeaders = { Authorization: "Bearer dev-approver" };
 
-const policyConfig: PolicyConfig = {
-  maxValue: config.policy.maxValue,
-  allowlist: config.policy.allowlist as Address[],
-  quorum: config.policy.quorum,
-};
-
 async function createPendingIntent(): Promise<{ id: string }> {
   const walletRes = await app.request("/wallets", { method: "POST", headers: adminHeaders });
   expect(walletRes.status).toBe(201);
-  const wallet = await walletRes.json();
+  const wallet = await readJson<WalletJson>(walletRes);
 
   const intentRes = await app.request("/intents", {
     method: "POST",
@@ -39,8 +30,8 @@ async function createPendingIntent(): Promise<{ id: string }> {
     }),
   });
   expect(intentRes.status).toBe(201);
-  const intent = await intentRes.json();
-  return { id: intent.id as string };
+  const intent = await readJson<IntentJson>(intentRes);
+  return { id: intent.id };
 }
 
 describe("Approve and execute failures", () => {
@@ -53,60 +44,47 @@ describe("Approve and execute failures", () => {
     expect(await res.json()).toEqual({ error: ApiErrorCode.NotFound });
   });
 
-  it("returns 403 for duplicate approval while still pending", () => {
+  it("returns 403 for duplicate approval while still pending", async () => {
+    const intent = await createPendingIntent();
     const db = openDb();
-    const intent = createIntent(db, {
+    createApproval(db, {
       id: randomUUID(),
-      fromWalletId: randomUUID(),
-      to: addressFromNumber(200),
-      value: 10n ** 15n,
-      asset: Asset.Eth,
-      initiatorId: "dev-initiator",
-      status: IntentStatus.Pending,
-      createdAt: new Date().toISOString(),
-    });
-    const highQuorum = { ...policyConfig, quorum: 2 };
-
-    approveIntent(db, highQuorum, {
       intentId: intent.id,
       approverId: "dev-approver",
+      createdAt: new Date().toISOString(),
     });
 
-    try {
-      approveIntent(db, highQuorum, {
-        intentId: intent.id,
-        approverId: "dev-approver",
-      });
-      expect.unreachable("expected AppError");
-    } catch (err) {
-      expect(err).toBeInstanceOf(AppError);
-      if (err instanceof AppError) expect(err.code).toBe(PolicyReason.DuplicateApproval);
-    }
+    const res = await app.request(`/intents/${intent.id}/approve`, {
+      method: "POST",
+      headers: approverHeaders,
+    });
+    expect(res.status).toBe(403);
+    expect(await res.json()).toEqual({ error: PolicyReason.DuplicateApproval });
   });
 
-  it("rejects self-approval via service with AppError", () => {
+  it("returns 403 for self-approval via HTTP", async () => {
+    const walletRes = await app.request("/wallets", { method: "POST", headers: adminHeaders });
+    expect(walletRes.status).toBe(201);
+    const wallet = await readJson<WalletJson>(walletRes);
+
     const db = openDb();
     const intent = createIntent(db, {
       id: randomUUID(),
-      fromWalletId: randomUUID(),
+      fromWalletId: wallet.id,
       to: addressFromNumber(200),
       value: 10n ** 15n,
       asset: Asset.Eth,
-      initiatorId: "same-actor",
+      initiatorId: "dev-approver",
       status: IntentStatus.Pending,
       createdAt: new Date().toISOString(),
     });
 
-    try {
-      approveIntent(db, policyConfig, {
-        intentId: intent.id,
-        approverId: "same-actor",
-      });
-      expect.unreachable("expected AppError");
-    } catch (err) {
-      expect(err).toBeInstanceOf(AppError);
-      if (err instanceof AppError) expect(err.code).toBe(PolicyReason.SelfApproval);
-    }
+    const res = await app.request(`/intents/${intent.id}/approve`, {
+      method: "POST",
+      headers: approverHeaders,
+    });
+    expect(res.status).toBe(403);
+    expect(await res.json()).toEqual({ error: PolicyReason.SelfApproval });
   });
 
   it("returns 400 when approving a non-pending intent", async () => {
@@ -135,7 +113,7 @@ describe("Approve and execute failures", () => {
     expect(await res.json()).toEqual({ error: ApiErrorCode.InvalidStatus });
   });
 
-  it("returns 400 when intent was already claimed for execution", async () => {
+  it("returns 400 when executing an intent already moved past approved", async () => {
     const intent = await createPendingIntent();
     const approveRes = await app.request(`/intents/${intent.id}/approve`, {
       method: "POST",

@@ -11,7 +11,7 @@ cp .env.example .env
 pnpm install
 ```
 
-Anvil is required for the gated signing flow and for `pnpm test`:
+Anvil is required for the gated signing flow and for `pnpm test` / `pnpm test:coverage`:
 
 ```bash
 # terminal A
@@ -19,6 +19,10 @@ anvil
 
 # terminal B
 pnpm test
+pnpm test:coverage
+pnpm lint:check
+pnpm typecheck
+pnpm typecheck:tests
 pnpm dev
 ```
 

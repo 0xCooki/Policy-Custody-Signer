@@ -35,14 +35,18 @@ const policyConfig: PolicyConfig = {
   quorum: config.policy.quorum,
 };
 
-function statusForAppError(err: AppError): 400 | 403 | 404 {
+function statusForAppError(err: AppError): 400 | 403 | 404 | 409 | 422 {
   switch (err.code) {
     case ApiErrorCode.NotFound:
       return 404;
-    case ApiErrorCode.Forbidden:
     case PolicyReason.SelfApproval:
     case PolicyReason.DuplicateApproval:
       return 403;
+    case ApiErrorCode.AlreadyClaimed:
+      return 409;
+    case PolicyReason.ValueOverMax:
+    case PolicyReason.ToNotAllowed:
+      return 422;
     default:
       return 400;
   }
@@ -84,7 +88,8 @@ app.post("/intents", authMiddleware, requireRole(Role.Initiator), async (c) => {
       payload: { reason: decision.reason, to: body.to, value: BigInt(body.value).toString() },
       actor: actor.actorId,
     });
-    return c.json({ error: decision.reason }, 422);
+    const err = new AppError(decision.reason);
+    return c.json({ error: err.code }, statusForAppError(err));
   }
 
   const intent = createIntent(db, {

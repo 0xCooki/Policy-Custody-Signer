@@ -5,6 +5,13 @@ import { listAuditEvents } from "src/db/audit.js";
 import { openDb } from "src/db/client.js";
 import { AuditEventType, IntentStatus } from "src/domain/types.js";
 import { addressFromNumber } from "src/utils/address.js";
+import {
+  type ApproveJson,
+  type ExecuteJson,
+  type IntentJson,
+  readJson,
+  type WalletJson,
+} from "test/helpers/json.js";
 import { beforeAll, describe, expect, it } from "vitest";
 
 const adminHeaders = { Authorization: "Bearer dev-admin" };
@@ -26,7 +33,7 @@ describe("unsafe intent → sign → tx hash (Anvil required)", () => {
   it("POST wallet → intent → approve → execute returns a tx hash", async () => {
     const walletRes = await app.request("/wallets", { method: "POST", headers: adminHeaders });
     expect(walletRes.status).toBe(201);
-    const wallet = await walletRes.json();
+    const wallet = await readJson<WalletJson>(walletRes);
     expect(wallet.address).toMatch(/^0x/);
 
     const intentRes = await app.request("/intents", {
@@ -39,7 +46,7 @@ describe("unsafe intent → sign → tx hash (Anvil required)", () => {
       }),
     });
     expect(intentRes.status).toBe(201);
-    const intent = await intentRes.json();
+    const intent = await readJson<IntentJson>(intentRes);
     expect(intent.status).toBe(IntentStatus.Pending);
 
     const approveRes = await app.request(`/intents/${intent.id}/approve`, {
@@ -47,7 +54,7 @@ describe("unsafe intent → sign → tx hash (Anvil required)", () => {
       headers: approverHeaders,
     });
     expect(approveRes.status).toBe(200);
-    const approved = await approveRes.json();
+    const approved = await readJson<ApproveJson>(approveRes);
     expect(approved.intent.status).toBe(IntentStatus.Approved);
     expect(approved.quorumMet).toBe(true);
 
@@ -56,13 +63,13 @@ describe("unsafe intent → sign → tx hash (Anvil required)", () => {
       headers: adminHeaders,
     });
     expect(execRes.status).toBe(200);
-    const body = await execRes.json();
+    const body = await readJson<ExecuteJson>(execRes);
     expect(body.txHash).toMatch(/^0x[0-9a-fA-F]+$/);
     expect(body.intent.status).toBe(IntentStatus.Confirmed);
     expect(body.intent.txHash).toBe(body.txHash);
 
     const receipt = await publicClient.getTransactionReceipt({
-      hash: body.txHash,
+      hash: body.txHash as `0x${string}`,
     });
     expect(receipt.status).toBe("success");
 

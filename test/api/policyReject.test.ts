@@ -3,6 +3,7 @@ import { listAuditEvents } from "src/db/audit.js";
 import { openDb } from "src/db/client.js";
 import { AuditEventType, PolicyReason } from "src/domain/types.js";
 import { addressFromNumber } from "src/utils/address.js";
+import { readJson, type WalletJson } from "test/helpers/json.js";
 import { describe, expect, it } from "vitest";
 
 const adminHeaders = { Authorization: "Bearer dev-admin" };
@@ -14,8 +15,8 @@ const initiatorHeaders = {
 async function createWalletId(): Promise<string> {
   const walletRes = await app.request("/wallets", { method: "POST", headers: adminHeaders });
   expect(walletRes.status).toBe(201);
-  const wallet = await walletRes.json();
-  return wallet.id as string;
+  const wallet = await readJson<WalletJson>(walletRes);
+  return wallet.id;
 }
 
 describe("Policy rejection at API", () => {

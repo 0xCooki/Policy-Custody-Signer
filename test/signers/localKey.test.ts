@@ -16,7 +16,7 @@ describe("LocalKeySigner", () => {
     const tx: UnsignedTx = {
       to: addressFromNumber(100),
       value: 10n ** 18n,
-      nonce: 0n,
+      nonce: 0,
       gas: 21000n,
       maxFeePerGas: 10n ** 9n,
       maxPriorityFeePerGas: 10n ** 9n,

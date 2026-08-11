@@ -2,9 +2,12 @@ process.env.POLICY_QUORUM = "2";
 process.env.API_KEY_APPROVERS = "dev-approver,dev-approver-b";
 process.env.DATABASE_PATH = `./data/test-quorum-${Date.now()}.db`;
 
+import type { ApproveJson, ExecuteJson, IntentJson, WalletJson } from "test/helpers/json.js";
+import { readJson } from "test/helpers/json.js";
+
 const { app } = await import("src/api/index.js");
 const { publicClient } = await import("src/chain/client.js");
-const { IntentStatus, PolicyReason } = await import("src/domain/types.js");
+const { ApiErrorCode, IntentStatus, PolicyReason } = await import("src/domain/types.js");
 const { addressFromNumber } = await import("src/utils/address.js");
 const { beforeAll, describe, expect, it } = await import("vitest");
 
@@ -28,7 +31,7 @@ describe("quorum > 1 flow (Anvil required)", () => {
   it("requires two distinct approvers before execute succeeds", async () => {
     const walletRes = await app.request("/wallets", { method: "POST", headers: adminHeaders });
     expect(walletRes.status).toBe(201);
-    const wallet = await walletRes.json();
+    const wallet = await readJson<WalletJson>(walletRes);
 
     const intentRes = await app.request("/intents", {
       method: "POST",
@@ -40,7 +43,7 @@ describe("quorum > 1 flow (Anvil required)", () => {
       }),
     });
     expect(intentRes.status).toBe(201);
-    const intent = await intentRes.json();
+    const intent = await readJson<IntentJson>(intentRes);
     expect(intent.status).toBe(IntentStatus.Pending);
 
     const firstApprove = await app.request(`/intents/${intent.id}/approve`, {
@@ -48,7 +51,7 @@ describe("quorum > 1 flow (Anvil required)", () => {
       headers: approverAHeaders,
     });
     expect(firstApprove.status).toBe(200);
-    const afterFirst = await firstApprove.json();
+    const afterFirst = await readJson<ApproveJson>(firstApprove);
     expect(afterFirst.quorumMet).toBe(false);
     expect(afterFirst.intent.status).toBe(IntentStatus.Pending);
 
@@ -57,6 +60,7 @@ describe("quorum > 1 flow (Anvil required)", () => {
       headers: adminHeaders,
     });
     expect(earlyExec.status).toBe(400);
+    expect(await earlyExec.json()).toEqual({ error: ApiErrorCode.InvalidStatus });
 
     const duplicate = await app.request(`/intents/${intent.id}/approve`, {
       method: "POST",
@@ -70,7 +74,7 @@ describe("quorum > 1 flow (Anvil required)", () => {
       headers: approverBHeaders,
     });
     expect(secondApprove.status).toBe(200);
-    const afterSecond = await secondApprove.json();
+    const afterSecond = await readJson<ApproveJson>(secondApprove);
     expect(afterSecond.quorumMet).toBe(true);
     expect(afterSecond.intent.status).toBe(IntentStatus.Approved);
 
@@ -79,7 +83,7 @@ describe("quorum > 1 flow (Anvil required)", () => {
       headers: adminHeaders,
     });
     expect(execRes.status).toBe(200);
-    const body = await execRes.json();
+    const body = await readJson<ExecuteJson>(execRes);
     expect(body.intent.status).toBe(IntentStatus.Confirmed);
     expect(body.txHash).toMatch(/^0x[0-9a-fA-F]+$/);
   });
