@@ -1,5 +1,6 @@
 import { resolveApiKey } from "src/auth/resolveApiKey.js";
 import type { ApiKeysConfig } from "src/auth/types.js";
+import { Role } from "src/domain/types.js";
 import { describe, expect, it } from "vitest";
 
 const apiKeys: ApiKeysConfig = {
@@ -16,45 +17,45 @@ describe("ResolveApiKey", () => {
 
   it("Resolves each comma-separated initiator", () => {
     expect(resolveApiKey("dev-initiator-a", apiKeys)).toEqual({
-      role: "initiator",
+      role: Role.Initiator,
       actorId: "dev-initiator-a",
     });
     expect(resolveApiKey("dev-initiator-b", apiKeys)).toEqual({
-      role: "initiator",
+      role: Role.Initiator,
       actorId: "dev-initiator-b",
     });
     expect(resolveApiKey("dev-initiator-c", apiKeys)).toEqual({
-      role: "initiator",
+      role: Role.Initiator,
       actorId: "dev-initiator-c",
     });
   });
 
   it("Resolves each comma-separated approver", () => {
     expect(resolveApiKey("dev-approver-a", apiKeys)).toEqual({
-      role: "approver",
+      role: Role.Approver,
       actorId: "dev-approver-a",
     });
     expect(resolveApiKey("dev-approver-b", apiKeys)).toEqual({
-      role: "approver",
+      role: Role.Approver,
       actorId: "dev-approver-b",
     });
     expect(resolveApiKey("dev-approver-c", apiKeys)).toEqual({
-      role: "approver",
+      role: Role.Approver,
       actorId: "dev-approver-c",
     });
   });
 
   it("Resolves each comma-separated admin", () => {
     expect(resolveApiKey("dev-admin-a", apiKeys)).toEqual({
-      role: "admin",
+      role: Role.Admin,
       actorId: "dev-admin-a",
     });
     expect(resolveApiKey("dev-admin-b", apiKeys)).toEqual({
-      role: "admin",
+      role: Role.Admin,
       actorId: "dev-admin-b",
     });
     expect(resolveApiKey("dev-admin-c", apiKeys)).toEqual({
-      role: "admin",
+      role: Role.Admin,
       actorId: "dev-admin-c",
     });
   });

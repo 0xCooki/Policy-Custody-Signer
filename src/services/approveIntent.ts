@@ -4,8 +4,10 @@ import { createApproval, listApprovalsForIntent } from "src/db/approvals.js";
 import type { Db } from "src/db/client.js";
 import { getIntent, updateIntentStatus } from "src/db/intents.js";
 import type { Approval, TransferIntent } from "src/domain/types.js";
+import { ApiErrorCode, AuditEventType, IntentStatus } from "src/domain/types.js";
 import { evaluateApprove } from "src/policy/engine.js";
 import type { PolicyConfig } from "src/policy/types.js";
+import { AppError } from "src/utils/errors.js";
 
 export function approveIntent(
   db: Db,
@@ -13,13 +15,15 @@ export function approveIntent(
   input: { intentId: string; approverId: string },
 ): { intent: TransferIntent; approval: Approval; quorumMet: boolean } {
   const write = db.transaction(() => {
-    // Get intent from the database
     const intent = getIntent(db, input.intentId);
-    if (!intent) throw new Error(`Intent not found: ${input.intentId}`);
-    if (intent.status !== "pending")
-      throw new Error(`Intent ${input.intentId} is ${intent.status}, expected pending`);
+    if (!intent) throw new AppError(ApiErrorCode.NotFound, `Intent not found: ${input.intentId}`);
+    if (intent.status !== IntentStatus.Pending) {
+      throw new AppError(
+        ApiErrorCode.InvalidStatus,
+        `Intent ${input.intentId} is ${intent.status}, expected ${IntentStatus.Pending}`,
+      );
+    }
 
-    // Get existing approvals and evaluate decision
     const existing = listApprovalsForIntent(db, intent.id);
     const decision = evaluateApprove(
       {
@@ -29,9 +33,8 @@ export function approveIntent(
       },
       policy,
     );
-    if (!decision.ok) throw new Error(decision.reason);
+    if (!decision.ok) throw new AppError(decision.reason);
 
-    // Approve the intent
     const approval = createApproval(db, {
       id: randomUUID(),
       intentId: intent.id,
@@ -39,7 +42,7 @@ export function approveIntent(
       createdAt: new Date().toISOString(),
     });
     appendAuditEvent(db, {
-      type: "IntentApproved",
+      type: AuditEventType.IntentApproved,
       payload: {
         intentId: intent.id,
         approverId: input.approverId,
@@ -48,11 +51,12 @@ export function approveIntent(
       actor: input.approverId,
     });
     if (decision.quorumMet) {
-      updateIntentStatus(db, intent.id, "approved");
+      updateIntentStatus(db, intent.id, IntentStatus.Approved);
     }
 
     const updated = getIntent(db, intent.id);
-    if (!updated) throw new Error(`Intent missing after update: ${intent.id}`);
+    if (!updated)
+      throw new AppError(ApiErrorCode.NotFound, `Intent missing after update: ${intent.id}`);
     return { intent: updated, approval, quorumMet: decision.quorumMet };
   });
 

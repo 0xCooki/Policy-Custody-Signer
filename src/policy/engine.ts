@@ -1,3 +1,4 @@
+import { PolicyReason } from "src/domain/types.js";
 import type { ApproveResult, PolicyConfig, PolicyResult } from "src/policy/types.js";
 import type { Address } from "src/signers/types.js";
 
@@ -6,12 +7,12 @@ export function evaluateCreate(
   policy: PolicyConfig,
 ): PolicyResult {
   if (input.value > policy.maxValue) {
-    return { ok: false, reason: "value_over_max" };
+    return { ok: false, reason: PolicyReason.ValueOverMax };
   }
 
   const allowed = policy.allowlist.some((a) => a.toLowerCase() === input.to.toLowerCase());
   if (!allowed) {
-    return { ok: false, reason: "to_not_allowed" };
+    return { ok: false, reason: PolicyReason.ToNotAllowed };
   }
 
   return { ok: true };
@@ -26,11 +27,11 @@ export function evaluateApprove(
   policy: PolicyConfig,
 ): ApproveResult {
   if (input.approverId === input.initiatorId) {
-    return { ok: false, reason: "self_approval" };
+    return { ok: false, reason: PolicyReason.SelfApproval };
   }
 
   if (input.existingApproverIds.includes(input.approverId)) {
-    return { ok: false, reason: "duplicate_approval" };
+    return { ok: false, reason: PolicyReason.DuplicateApproval };
   }
 
   const approvalCount = input.existingApproverIds.length + 1;

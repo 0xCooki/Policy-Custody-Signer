@@ -1,8 +1,14 @@
-import type { Address, Hex, SignerProvider, UnsignedTx } from "src/signers/types.js";
+import {
+  type Address,
+  type Hex,
+  SignerBackend,
+  type SignerProvider,
+  type UnsignedTx,
+} from "src/signers/types.js";
 import { privateKeyToAccount } from "viem/accounts";
 
 export class LocalKeySigner implements SignerProvider {
-  readonly name = "local" as const;
+  readonly name = SignerBackend.Local;
   private readonly account;
 
   constructor(privateKey: Hex) {
