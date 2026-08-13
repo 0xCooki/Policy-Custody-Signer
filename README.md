@@ -39,3 +39,19 @@ Policy (`POLICY_MAX_VALUE`, `POLICY_ALLOWLIST`, `POLICY_QUORUM`) is evaluated on
 Health check: `GET http://localhost:3000/health`
 
 Reset the local SQLite file: `pnpm db:reset`
+
+### SoftHSM (real PKCS#11)
+
+SoftHSM keeps the private key in a PKCS#11 token (lab stand-in for a bank HSM). Production swaps the `.so` for a hardware HSM module.
+
+```bash
+# API + SoftHSM + Anvil
+docker compose up --build
+
+# Live SoftHSM signer tests (builds image, starts Anvil, runs SoftHSM vitest)
+pnpm test:softhsm
+```
+
+Or on the host: install SoftHSM2, run `./scripts/init-softhsm.sh`, export the printed `SOFTHSM_*` / `SOFTHSM2_CONF` vars, set `SIGNER_BACKEND=softhsm`.
+
+Default `pnpm test` stays on LocalKey and skips SoftHSM live cases unless `SOFTHSM_MODULE_PATH` points at a real module. Use `pnpm test:softhsm` for the Docker SoftHSM path.

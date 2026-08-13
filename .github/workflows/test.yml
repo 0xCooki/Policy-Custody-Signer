@@ -65,3 +65,18 @@ jobs:
           if-no-files-found: ignore
 
       - run: pnpm build
+
+  softhsm:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Host pnpm is unnecessary: the image builds deps and runs vitest inside Compose.
+      - name: SoftHSM live signer tests (Docker Compose)
+        run: >
+          docker compose run --rm --build api
+          pnpm exec vitest run
+          test/signers/softHsm.test.ts
+          test/signers/createSigner.test.ts
