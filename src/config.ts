@@ -30,6 +30,12 @@ export const config = {
   port: envInt("PORT", 3000),
   databasePath: envString("DATABASE_PATH", "./data/custody.db"),
   signerBackend: envSignerBackend("SIGNER_BACKEND", SignerBackend.Local),
+  softHsm: {
+    modulePath: envString("SOFTHSM_MODULE_PATH", ""),
+    pin: envString("SOFTHSM_PIN", "1234"),
+    slot: envInt("SOFTHSM_SLOT", 0),
+    keyLabel: envString("SOFTHSM_KEY_LABEL", "custody-eth"),
+  },
   apiKeys: {
     initiators: envString("API_KEY_INITIATORS", "dev-initiator"),
     approvers: envString("API_KEY_APPROVERS", "dev-approver"),

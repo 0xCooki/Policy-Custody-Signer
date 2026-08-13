@@ -15,6 +15,8 @@
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "test:watch": "vitest",
+    "test:softhsm": "docker compose run --rm --build api pnpm exec vitest run test/signers/softHsm.test.ts test/signers/createSigner.test.ts",
+    "softhsm:init": "./scripts/init-softhsm.sh",
     "typecheck": "tsc --noEmit",
     "typecheck:tests": "tsc --noEmit -p tsconfig.test.json"
   },
@@ -33,6 +35,7 @@
     "@hono/node-server": "2.0.12",
     "better-sqlite3": "13.0.2",
     "dotenv": "17.4.2",
+    "graphene-pk11": "2.3.6",
     "hono": "4.12.33",
     "viem": "2.55.10"
   },

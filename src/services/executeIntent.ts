@@ -84,20 +84,18 @@ export async function executeIntent(
     }
     return { intent: updatedIntent, txHash };
   } catch (err) {
-    if (err instanceof AppError) throw err;
-
     const message = err instanceof Error ? err.message : "execute failed";
 
     if (txHash === undefined) {
-      // Build/sign failed: nothing sent and safe to retry
+      // Build/sign failed (including AppError): nothing sent and safe to retry
       updateIntentStatus(db, intentId, IntentStatus.Approved);
       appendAuditEvent(db, {
         type: AuditEventType.TxFailed,
         payload: { intentId, error: message },
         actor: actorId,
       });
-    } else {
-      // Broadcast may have landed: fail closed
+    } else if (!(err instanceof AppError)) {
+      // Broadcast may have landed: fail closed (skip for post-confirm AppError)
       updateIntentExecution(db, intentId, IntentStatus.Failed, txHash);
       appendAuditEvent(db, {
         type: AuditEventType.TxFailed,
@@ -106,6 +104,7 @@ export async function executeIntent(
       });
     }
 
+    if (err instanceof AppError) throw err;
     throw new Error(message);
   }
 }

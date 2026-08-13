@@ -26,4 +26,12 @@ describe("Auth middleware", () => {
     expect(res.status).toBe(403);
     expect(await res.json()).toEqual({ error: ApiErrorCode.Forbidden });
   });
+
+  it("accepts x-api-key as an alternative to Authorization", async () => {
+    const res = await app.request("/wallets", {
+      method: "GET",
+      headers: { "x-api-key": "dev-admin" },
+    });
+    expect(res.status).toBe(200);
+  });
 });

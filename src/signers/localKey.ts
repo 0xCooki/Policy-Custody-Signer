@@ -16,7 +16,6 @@ export class LocalKeySigner implements SignerProvider {
       throw new Error("LOCAL_PRIVATE_KEY is required for LocalKeySigner (DEV ONLY / UNSAFE)");
     }
     this.account = privateKeyToAccount(privateKey);
-    //console.warn("[LocalKeySigner] DEV ONLY / UNSAFE: local private key in process memory");
   }
 
   async getAddress(): Promise<Address> {
