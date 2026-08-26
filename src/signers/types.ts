@@ -20,8 +20,12 @@ export type UnsignedTx = {
   chainId: number;
 };
 
+export type SignTransactionOpts = {
+  idempotencyKey?: string;
+};
+
 export interface SignerProvider {
   readonly name: SignerBackend;
   getAddress(): Promise<Address>;
-  signTransaction(tx: UnsignedTx): Promise<Hex>;
+  signTransaction(tx: UnsignedTx, opts?: SignTransactionOpts): Promise<Hex>;
 }

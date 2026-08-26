@@ -43,6 +43,7 @@ function statusForAppError(err: AppError): 400 | 403 | 404 | 409 | 422 {
     case PolicyReason.DuplicateApproval:
       return 403;
     case ApiErrorCode.AlreadyClaimed:
+    case ApiErrorCode.TxReverted:
       return 409;
     case PolicyReason.ValueOverMax:
     case PolicyReason.ToNotAllowed:

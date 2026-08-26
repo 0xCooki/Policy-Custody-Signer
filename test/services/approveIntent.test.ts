@@ -80,4 +80,18 @@ describe("approveIntent", () => {
       approveIntent(db, policy, { intentId: intent.id, approverId: "dev-approver" }),
     ).toThrow(expect.objectContaining({ code: ApiErrorCode.NotFound }));
   });
+
+  it("leaves the intent pending when quorum is not yet met", () => {
+    const intent = seedPendingIntent();
+    const result = approveIntent(
+      db,
+      { ...policy, quorum: 2 },
+      {
+        intentId: intent.id,
+        approverId: "dev-approver",
+      },
+    );
+    expect(result.quorumMet).toBe(false);
+    expect(result.intent.status).toBe(IntentStatus.Pending);
+  });
 });

@@ -60,7 +60,7 @@ export async function executeIntent(
       to: claim.intent.to,
       value: claim.intent.value,
     });
-    const signedTx = await signer.signTransaction(unsignedTx);
+    const signedTx = await signer.signTransaction(unsignedTx, { idempotencyKey: intentId });
 
     txHash = await broadcastSignedTx(signedTx);
     appendAuditEvent(db, {
@@ -69,12 +69,32 @@ export async function executeIntent(
       actor: actorId,
     });
 
-    await waitForTx(txHash);
+    const receipt = await waitForTx(txHash);
+    if (receipt.status !== "success") {
+      updateIntentExecution(db, intentId, IntentStatus.Failed, txHash);
+      appendAuditEvent(db, {
+        type: AuditEventType.TxFailed,
+        payload: {
+          intentId,
+          txHash,
+          status: receipt.status,
+          blockNumber: receipt.blockNumber.toString(),
+          error: "receipt status is not success",
+        },
+        actor: actorId,
+      });
+      throw new AppError(ApiErrorCode.TxReverted, "receipt status is not success");
+    }
 
     updateIntentExecution(db, intentId, IntentStatus.Confirmed, txHash);
     appendAuditEvent(db, {
       type: AuditEventType.TxConfirmed,
-      payload: { intentId, txHash },
+      payload: {
+        intentId,
+        txHash,
+        status: receipt.status,
+        blockNumber: receipt.blockNumber.toString(),
+      },
       actor: actorId,
     });
 
