@@ -55,3 +55,38 @@ pnpm test:softhsm
 Or on the host: install SoftHSM2, run `./scripts/init-softhsm.sh`, export the printed `SOFTHSM_*` / `SOFTHSM2_CONF` vars, set `SIGNER_BACKEND=softhsm`.
 
 Default `pnpm test` stays on LocalKey and skips SoftHSM live cases unless `SOFTHSM_MODULE_PATH` points at a real module. Use `pnpm test:softhsm` for the Docker SoftHSM path.
+
+### Mock MPC (vendor simulator)
+
+A separate HTTP service simulates a 2-of-3 custody vendor (async request + poll). It signs with a labelled Anvil #0 **dev key** after threshold availability; it is not real threshold cryptography.
+
+```bash
+# terminal A — Anvil
+anvil
+
+# terminal B — mock vendor (default http://127.0.0.1:3001)
+pnpm dev:mock-mpc
+
+# terminal C — custody API
+SIGNER_BACKEND=mock-mpc pnpm dev
+```
+
+Auth to the vendor: `Authorization: Bearer $MOCK_MPC_API_KEY` (default `dev-mpc-secret`).
+
+All three mock participants start online (threshold 2-of-3). Take a party offline to simulate `threshold_not_met`. A later request with the same idempotency key retries once enough participants are restored:
+
+```bash
+# 1-of-3 online — the next signing request fails
+curl -X PUT http://127.0.0.1:3001/v1/participants \
+  -H "Authorization: Bearer dev-mpc-secret" \
+  -H "content-type: application/json" \
+  -d '{"available":[0]}'
+
+# restore 2-of-3
+curl -X PUT http://127.0.0.1:3001/v1/participants \
+  -H "Authorization: Bearer dev-mpc-secret" \
+  -H "content-type: application/json" \
+  -d '{"available":[0,1]}'
+```
+
+`GET /v1/participants` returns `{ threshold, participants, available }`.

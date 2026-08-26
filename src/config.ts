@@ -15,6 +15,14 @@ function envInt(name: string, fallback: number): number {
   return n;
 }
 
+function envPositiveInt(name: string, fallback: number): number {
+  const n = envInt(name, fallback);
+  if (n <= 0) {
+    throw new Error(`Invalid ${name}="${n}". Expected a positive integer`);
+  }
+  return n;
+}
+
 function envSignerBackend(name: string, fallback: SignerBackend): SignerBackend {
   const raw = process.env[name];
   if (raw === undefined || raw === "") return fallback;
@@ -44,6 +52,17 @@ export const config = {
   rpcUrl: envString("RPC_URL", "http://127.0.0.1:8545"),
   chainId: envInt("CHAIN_ID", 31337),
   localPrivateKey: envString("LOCAL_PRIVATE_KEY", ""),
+  mockMpc: {
+    url: envString("MOCK_MPC_URL", "http://127.0.0.1:3001"),
+    apiKey: envString("MOCK_MPC_API_KEY", "dev-mpc-secret"),
+    pollIntervalMs: envPositiveInt("MOCK_MPC_POLL_INTERVAL_MS", 50),
+    timeoutMs: envPositiveInt("MOCK_MPC_TIMEOUT_MS", 5000),
+    port: envInt("MOCK_MPC_PORT", 3001),
+    devPrivateKey: envString(
+      "MOCK_MPC_DEV_PRIVATE_KEY",
+      "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80",
+    ),
+  },
   policy: {
     maxValue: BigInt(envString("POLICY_MAX_VALUE", `${10n ** 18n}`)),
     allowlist: arrayFromCsv(envString("POLICY_ALLOWLIST", "")),

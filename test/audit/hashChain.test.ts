@@ -1,3 +1,4 @@
+import { hashAuditBody } from "src/audit/hash.js";
 import { appendAuditEvent } from "src/audit/log.js";
 import { verifyAuditChain } from "src/audit/verify.js";
 import { listAuditEvents } from "src/db/audit.js";
@@ -41,5 +42,26 @@ describe("Hash Chain", () => {
     });
 
     expect(verifyAuditChain(tampered)).toBe(false);
+  });
+
+  it("accepts an empty chain and rejects a broken prevHash", () => {
+    expect(verifyAuditChain([])).toBe(true);
+
+    const events = listAuditEvents(db);
+    const withBreak = events.map((e, i) => (i === 1 ? { ...e, prevHash: null } : e));
+    expect(verifyAuditChain(withBreak)).toBe(false);
+  });
+
+  it("hashes the same audit body deterministically", () => {
+    const body = {
+      id: "1",
+      type: AuditEventType.IntentCreated,
+      payload: { intentId: "1" },
+      actor: "dev-initiator",
+      timestamp: "2026-01-01T00:00:00.000Z",
+      prevHash: null,
+    };
+    expect(hashAuditBody(body)).toBe(hashAuditBody(body));
+    expect(hashAuditBody({ ...body, actor: "other" })).not.toBe(hashAuditBody(body));
   });
 });

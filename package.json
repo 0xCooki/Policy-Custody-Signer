@@ -7,6 +7,7 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/api/index.ts",
+    "dev:mock-mpc": "tsx watch src/mockMpc/index.ts",
     "db:reset": "rm -f ./data/custody.db ./data/custody.db-*",
     "build": "tsc && tsc-alias",
     "lint:check": "biome check .",

@@ -13,6 +13,12 @@ const { mockConfig } = vi.hoisted(() => ({
       slot: 0,
       keyLabel: "custody-eth",
     },
+    mockMpc: {
+      url: "http://127.0.0.1:3001",
+      apiKey: "dev-mpc-secret",
+      pollIntervalMs: 50,
+      timeoutMs: 5000,
+    },
   },
 }));
 
@@ -22,6 +28,7 @@ vi.mock("src/config.js", () => ({
 
 const { createSigner } = await import("src/signers/createSigner.js");
 const { LocalKeySigner } = await import("src/signers/localKey.js");
+const { MockMpcSigner } = await import("src/signers/mockMpc.js");
 const { SoftHsmSigner } = await import("src/signers/softHsm.js");
 
 describe("createSigner", () => {
@@ -70,9 +77,11 @@ describe("createSigner", () => {
     },
   );
 
-  it("throws for MockMpc until implemented", () => {
+  it("returns MockMpcSigner for the mock-mpc backend", () => {
     mockConfig.signerBackend = SignerBackend.MockMpc;
-    expect(() => createSigner()).toThrow(/not implemented yet/);
+    const signer = createSigner();
+    expect(signer).toBeInstanceOf(MockMpcSigner);
+    expect(signer.name).toBe(SignerBackend.MockMpc);
   });
 
   it("throws for an unknown backend", () => {

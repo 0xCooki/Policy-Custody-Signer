@@ -48,6 +48,7 @@ export const ApiErrorCode = {
   NotFound: "not_found",
   InvalidStatus: "invalid_status",
   AlreadyClaimed: "already_claimed",
+  TxReverted: "tx_reverted",
 } as const;
 export type ApiErrorCode = (typeof ApiErrorCode)[keyof typeof ApiErrorCode];
 

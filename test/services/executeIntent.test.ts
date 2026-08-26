@@ -1,11 +1,12 @@
 import { randomUUID } from "node:crypto";
 import * as broadcast from "src/chain/broadcast.js";
 import * as buildTransferTx from "src/chain/buildTransferTx.js";
+import { listAuditEvents } from "src/db/audit.js";
 import { openDb } from "src/db/client.js";
 import * as intentsDb from "src/db/intents.js";
 import { createIntent } from "src/db/intents.js";
 import { createWallet } from "src/db/wallets.js";
-import { ApiErrorCode, Asset, IntentStatus } from "src/domain/types.js";
+import { ApiErrorCode, Asset, AuditEventType, IntentStatus } from "src/domain/types.js";
 import { executeIntent } from "src/services/executeIntent.js";
 import type { Hex, SignerProvider, UnsignedTx } from "src/signers/types.js";
 import { SignerBackend } from "src/signers/types.js";
@@ -129,6 +130,20 @@ describe("executeIntent edge cases", () => {
     expect(intentsDb.getIntent(db, intent.id)?.status).toBe(IntentStatus.Approved);
   });
 
+  it("restores Approved when signTransaction fails after a successful build", async () => {
+    const { intent } = seedApprovedIntent();
+    vi.spyOn(buildTransferTx, "buildTransferTx").mockResolvedValueOnce(sampleUnsigned);
+    const signer: SignerProvider = {
+      ...stubSigner,
+      signTransaction: async () => {
+        throw new Error("vendor down");
+      },
+    };
+
+    await expect(executeIntent(db, signer, intent.id, "dev-admin")).rejects.toThrow(/vendor down/);
+    expect(intentsDb.getIntent(db, intent.id)?.status).toBe(IntentStatus.Approved);
+  });
+
   it("marks Failed when waitForTx fails after broadcast", async () => {
     const { intent } = seedApprovedIntent();
     const txHash = "0xabc" as Hex;
@@ -152,12 +167,30 @@ describe("executeIntent edge cases", () => {
     expect(intentsDb.getIntent(db, intent.id)?.status).toBe(IntentStatus.Approved);
   });
 
+  it("passes the intent id as the signer idempotency key", async () => {
+    const { intent } = seedApprovedIntent();
+    const signTransaction = vi.fn(async () => "0xdead" as Hex);
+    const signer: SignerProvider = { ...stubSigner, signTransaction };
+    vi.spyOn(buildTransferTx, "buildTransferTx").mockResolvedValueOnce(sampleUnsigned);
+    vi.spyOn(broadcast, "broadcastSignedTx").mockResolvedValueOnce("0xabc" as Hex);
+    vi.spyOn(broadcast, "waitForTx").mockResolvedValueOnce({
+      status: "success",
+      blockNumber: 1n,
+    } as never);
+
+    await executeIntent(db, signer, intent.id, "dev-admin");
+    expect(signTransaction).toHaveBeenCalledWith(sampleUnsigned, { idempotencyKey: intent.id });
+  });
+
   it("throws NotFound when the intent disappears after confirmation", async () => {
     const { wallet, intent } = seedApprovedIntent();
     const txHash = "0xdef" as Hex;
     vi.spyOn(buildTransferTx, "buildTransferTx").mockResolvedValueOnce(sampleUnsigned);
     vi.spyOn(broadcast, "broadcastSignedTx").mockResolvedValueOnce(txHash);
-    vi.spyOn(broadcast, "waitForTx").mockResolvedValueOnce({} as never);
+    vi.spyOn(broadcast, "waitForTx").mockResolvedValueOnce({
+      status: "success",
+      blockNumber: 1n,
+    } as never);
     vi.spyOn(intentsDb, "claimIntentForExecution").mockReturnValueOnce(true);
     vi.spyOn(intentsDb, "updateIntentExecution").mockImplementation(() => {});
     vi.spyOn(intentsDb, "getIntent")
@@ -167,5 +200,27 @@ describe("executeIntent edge cases", () => {
     await expect(executeIntent(db, stubSigner, intent.id, "dev-admin")).rejects.toMatchObject({
       code: ApiErrorCode.NotFound,
     });
+  });
+
+  it("marks Failed and emits TxFailed when the receipt is reverted", async () => {
+    const { intent } = seedApprovedIntent();
+    const txHash = "0xabc" as Hex;
+    vi.spyOn(buildTransferTx, "buildTransferTx").mockResolvedValueOnce(sampleUnsigned);
+    vi.spyOn(broadcast, "broadcastSignedTx").mockResolvedValueOnce(txHash);
+    vi.spyOn(broadcast, "waitForTx").mockResolvedValueOnce({
+      status: "reverted",
+      blockNumber: 12n,
+    } as never);
+
+    await expect(executeIntent(db, stubSigner, intent.id, "dev-admin")).rejects.toMatchObject({
+      code: ApiErrorCode.TxReverted,
+    });
+    const updated = intentsDb.getIntent(db, intent.id);
+    expect(updated?.status).toBe(IntentStatus.Failed);
+    expect(updated?.txHash).toBe(txHash);
+
+    const events = listAuditEvents(db).filter((e) => e.payload.intentId === intent.id);
+    expect(events.filter((e) => e.type === AuditEventType.TxFailed)).toHaveLength(1);
+    expect(events.some((e) => e.type === AuditEventType.ReconcileMismatch)).toBe(false);
   });
 });
