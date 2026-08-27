@@ -1,7 +1,7 @@
 import { hashAuditBody } from "src/audit/hash.js";
 import { appendAuditEvent } from "src/audit/log.js";
 import { verifyAuditChain } from "src/audit/verify.js";
-import { listAuditEvents } from "src/db/audit.js";
+import { listAuditEvents, listAuditEventsForIntent } from "src/db/audit.js";
 import { openDb } from "src/db/client.js";
 import { AuditEventType } from "src/domain/types.js";
 import { describe, expect, it } from "vitest";
@@ -50,6 +50,41 @@ describe("Hash Chain", () => {
     const events = listAuditEvents(db);
     const withBreak = events.map((e, i) => (i === 1 ? { ...e, prevHash: null } : e));
     expect(verifyAuditChain(withBreak)).toBe(false);
+  });
+
+  it("lists audit events for one intent and skips others", () => {
+    appendAuditEvent(db, {
+      type: AuditEventType.PolicyRejected,
+      payload: { reason: "to_not_allowed" },
+      actor: "dev-initiator",
+    });
+    appendAuditEvent(db, {
+      type: AuditEventType.IntentCreated,
+      payload: { intentId: "intent-a" },
+      actor: "dev-initiator",
+    });
+    appendAuditEvent(db, {
+      type: AuditEventType.IntentCreated,
+      payload: { intentId: "intent-b" },
+      actor: "dev-initiator",
+    });
+    appendAuditEvent(db, {
+      type: AuditEventType.IntentApproved,
+      payload: { intentId: "intent-a" },
+      actor: "dev-approver",
+    });
+
+    const forA = listAuditEventsForIntent(db, "intent-a");
+    expect(forA.map((e) => e.type)).toEqual([
+      AuditEventType.IntentCreated,
+      AuditEventType.IntentApproved,
+    ]);
+    expect(forA.every((e) => e.payload.intentId === "intent-a")).toBe(true);
+
+    const forB = listAuditEventsForIntent(db, "intent-b");
+    expect(forB).toHaveLength(1);
+    expect(forB[0]?.payload.intentId).toBe("intent-b");
+    expect(listAuditEventsForIntent(db, "missing")).toEqual([]);
   });
 
   it("hashes the same audit body deterministically", () => {

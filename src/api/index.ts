@@ -3,9 +3,11 @@ import { pathToFileURL } from "node:url";
 import { serve } from "@hono/node-server";
 import { Hono } from "hono";
 import { appendAuditEvent } from "src/audit/log.js";
+import { verifyAuditChain } from "src/audit/verify.js";
 import { authMiddleware, requireRole } from "src/auth/middleware.js";
 import type { AuthEnv } from "src/auth/types.js";
 import { config } from "src/config.js";
+import { listAuditEvents, listAuditEventsForIntent } from "src/db/audit.js";
 import { openDb } from "src/db/client.js";
 import { createIntent, getIntent } from "src/db/intents.js";
 import { createWallet, listWallets } from "src/db/wallets.js";
@@ -24,7 +26,7 @@ import { executeIntent } from "src/services/executeIntent.js";
 import { createSigner } from "src/signers/createSigner.js";
 import type { Address } from "src/signers/types.js";
 import { AppError } from "src/utils/errors.js";
-import { intentToJson } from "src/utils/json.js";
+import { auditEventToJson, intentAuditToJson, intentToJson } from "src/utils/json.js";
 
 const app = new Hono<AuthEnv>();
 const db = openDb();
@@ -115,7 +117,29 @@ app.post("/intents", authMiddleware, requireRole(Role.Initiator), async (c) => {
 app.get("/intents/:id", authMiddleware, (c) => {
   const intent = getIntent(db, c.req.param("id"));
   if (!intent) return c.json({ error: ApiErrorCode.NotFound }, 404);
-  return c.json(intentToJson(intent));
+
+  const actor = c.get("actor");
+  const allowed =
+    actor.role === Role.Admin ||
+    actor.role === Role.Approver ||
+    (actor.role === Role.Initiator && intent.initiatorId === actor.actorId);
+  // Same 404 as a missing id so initiators cannot probe whether another intent exists.
+  if (!allowed) return c.json({ error: ApiErrorCode.NotFound }, 404);
+
+  // Related rows from the global hash chain. Omit actor and hashes;
+  // this subset is not a verifiable chain — use admin GET /audit for that.
+  return c.json({
+    ...intentToJson(intent),
+    events: listAuditEventsForIntent(db, intent.id).map(intentAuditToJson),
+  });
+});
+
+app.get("/audit", authMiddleware, requireRole(Role.Admin), (c) => {
+  const events = listAuditEvents(db);
+  return c.json({
+    events: events.map((event) => auditEventToJson(event, config.apiKeys)),
+    verified: verifyAuditChain(events),
+  });
 });
 
 app.post("/intents/:id/approve", authMiddleware, requireRole(Role.Approver), async (c) => {

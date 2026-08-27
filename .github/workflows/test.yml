@@ -66,6 +66,53 @@ jobs:
 
       - run: pnpm build
 
+  softhsm-demo:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Start Compose (SoftHSM + Anvil + API)
+        run: docker compose up -d --build
+
+      - name: Wait for Anvil RPC and API health
+        run: |
+          for i in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:8545 \
+              -H 'content-type: application/json' \
+              --data '{"jsonrpc":"2.0","id":1,"method":"eth_blockNumber","params":[]}' \
+              >/dev/null \
+              && curl -fsS http://127.0.0.1:3000/health >/dev/null; then
+              echo "anvil and api are up"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "stack failed to become ready"
+          docker compose logs
+          exit 1
+
+      - name: Live demo (gated SoftHSM signing)
+        run: |
+          set -euo pipefail
+          if ! docker compose exec -T api pnpm demo | tee /tmp/demo.out; then
+            echo "demo failed"
+            docker compose logs
+            exit 1
+          fi
+          if ! grep -q 'verified: true' /tmp/demo.out \
+            || ! grep -Eq 'txHash: 0x[0-9a-fA-F]{64}' /tmp/demo.out; then
+            echo "demo exited 0 but did not print verified/txHash (CLI may not have run)"
+            cat /tmp/demo.out
+            docker compose logs
+            exit 1
+          fi
+
+      - name: Stop Compose
+        if: always()
+        run: docker compose down -v
+
   softhsm:
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -73,10 +120,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Host pnpm is unnecessary: the image builds deps and runs vitest inside Compose.
-      - name: SoftHSM live signer tests (Docker Compose)
+      - name: SoftHSM live signer tests
         run: >
           docker compose run --rm --build api
           pnpm exec vitest run
           test/signers/softHsm.test.ts
           test/signers/createSigner.test.ts
+
+      - name: Stop Compose
+        if: always()
+        run: docker compose down -v

@@ -61,6 +61,19 @@ export function listAuditEvents(db: Db): AuditEvent[] {
   return rows.map(rowToAuditEvent);
 }
 
+export function listAuditEventsForIntent(db: Db, intentId: string): AuditEvent[] {
+  const rows = db
+    .prepare(
+      `SELECT id, type, payload, actor, timestamp, prev_hash, event_hash
+       FROM audit_events
+       WHERE json_extract(payload, '$.intentId') = ?
+       ORDER BY rowid ASC`,
+    )
+    .all(intentId) as AuditEventRow[];
+
+  return rows.map(rowToAuditEvent);
+}
+
 export function getLastAuditEvent(db: Db): AuditEvent | undefined {
   const row = db
     .prepare(
