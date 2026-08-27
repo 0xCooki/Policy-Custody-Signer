@@ -10,6 +10,7 @@ export default defineConfig({
     alias: {
       src: path.join(root, "src"),
       test: path.join(root, "test"),
+      scripts: path.join(root, "scripts"),
     },
   },
   test: {

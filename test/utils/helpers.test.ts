@@ -1,7 +1,7 @@
-import { ApiErrorCode } from "src/domain/types.js";
+import { ApiErrorCode, AuditEventType, Role } from "src/domain/types.js";
 import { addressFromNumber } from "src/utils/address.js";
 import { AppError } from "src/utils/errors.js";
-import { intentToJson } from "src/utils/json.js";
+import { auditEventToJson, intentAuditToJson, intentToJson } from "src/utils/json.js";
 import { arrayFromCsv, extractApiKey } from "src/utils/string.js";
 import { describe, expect, it } from "vitest";
 
@@ -35,6 +35,77 @@ describe("AppError", () => {
 describe("intentToJson", () => {
   it("stringifies value", () => {
     expect(intentToJson({ id: "1", value: 10n })).toEqual({ id: "1", value: "10" });
+  });
+});
+
+const apiKeys = {
+  initiators: "dev-initiator",
+  approvers: "dev-approver",
+  admins: "dev-admin",
+};
+
+describe("intentAuditToJson", () => {
+  it("omits actor, chain hashes, and approverId", () => {
+    expect(
+      intentAuditToJson({
+        id: "evt-1",
+        type: AuditEventType.IntentApproved,
+        payload: { intentId: "intent-1", approverId: "dev-approver", quorumMet: true },
+        actor: "dev-approver",
+        timestamp: "2026-01-01T00:00:00.000Z",
+        prevHash: "0xprev",
+        eventHash: "0xhash",
+      }),
+    ).toEqual({
+      id: "evt-1",
+      type: AuditEventType.IntentApproved,
+      payload: { intentId: "intent-1", quorumMet: true },
+      timestamp: "2026-01-01T00:00:00.000Z",
+    });
+  });
+});
+
+describe("auditEventToJson", () => {
+  it("keeps hashes, maps actor to role, and strips approverId", () => {
+    expect(
+      auditEventToJson(
+        {
+          id: "evt-1",
+          type: AuditEventType.IntentApproved,
+          payload: { intentId: "intent-1", approverId: "dev-approver", quorumMet: true },
+          actor: "dev-approver",
+          timestamp: "2026-01-01T00:00:00.000Z",
+          prevHash: "0xprev",
+          eventHash: "0xhash",
+        },
+        apiKeys,
+      ),
+    ).toEqual({
+      id: "evt-1",
+      type: AuditEventType.IntentApproved,
+      payload: { intentId: "intent-1", quorumMet: true },
+      role: Role.Approver,
+      timestamp: "2026-01-01T00:00:00.000Z",
+      prevHash: "0xprev",
+      eventHash: "0xhash",
+    });
+  });
+
+  it("returns a null role when the actor is not a configured key", () => {
+    expect(
+      auditEventToJson(
+        {
+          id: "evt-1",
+          type: AuditEventType.IntentCreated,
+          payload: { intentId: "intent-1" },
+          actor: "rotated-key",
+          timestamp: "2026-01-01T00:00:00.000Z",
+          prevHash: null,
+          eventHash: "0xhash",
+        },
+        apiKeys,
+      ).role,
+    ).toBeNull();
   });
 });
 

@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import * as broadcast from "src/chain/broadcast.js";
 import * as buildTransferTx from "src/chain/buildTransferTx.js";
-import { listAuditEvents } from "src/db/audit.js";
+import { listAuditEventsForIntent } from "src/db/audit.js";
 import { openDb } from "src/db/client.js";
 import * as intentsDb from "src/db/intents.js";
 import { createIntent } from "src/db/intents.js";
@@ -219,7 +219,7 @@ describe("executeIntent edge cases", () => {
     expect(updated?.status).toBe(IntentStatus.Failed);
     expect(updated?.txHash).toBe(txHash);
 
-    const events = listAuditEvents(db).filter((e) => e.payload.intentId === intent.id);
+    const events = listAuditEventsForIntent(db, intent.id);
     expect(events.filter((e) => e.type === AuditEventType.TxFailed)).toHaveLength(1);
     expect(events.some((e) => e.type === AuditEventType.ReconcileMismatch)).toBe(false);
   });

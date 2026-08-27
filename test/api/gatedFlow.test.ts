@@ -64,7 +64,7 @@ describe("unsafe intent → sign → tx hash (Anvil required)", () => {
     });
     expect(execRes.status).toBe(200);
     const body = await readJson<ExecuteJson>(execRes);
-    expect(body.txHash).toMatch(/^0x[0-9a-fA-F]+$/);
+    expect(body.txHash).toMatch(/^0x[0-9a-fA-F]{64}$/);
     expect(body.intent.status).toBe(IntentStatus.Confirmed);
     expect(body.intent.txHash).toBe(body.txHash);
 
@@ -72,6 +72,21 @@ describe("unsafe intent → sign → tx hash (Anvil required)", () => {
       hash: body.txHash as `0x${string}`,
     });
     expect(receipt.status).toBe("success");
+
+    const intentGet = await readJson<IntentJson>(
+      await app.request(`/intents/${intent.id}`, { headers: initiatorHeaders }),
+    );
+    expect(intentGet.events?.map((e) => e.type)).toEqual([
+      AuditEventType.IntentCreated,
+      AuditEventType.IntentApproved,
+      AuditEventType.SignRequested,
+      AuditEventType.TxBroadcast,
+      AuditEventType.TxConfirmed,
+    ]);
+    expect(intentGet.events?.every((e) => e.payload.intentId === intent.id)).toBe(true);
+    expect(
+      intentGet.events?.every((e) => !("actor" in e) && !("prevHash" in e) && !("eventHash" in e)),
+    ).toBe(true);
 
     const events = listAuditEvents(openDb());
     expect(verifyAuditChain(events)).toBe(true);

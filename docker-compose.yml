@@ -4,6 +4,11 @@ services:
     entrypoint: ["anvil", "--host", "0.0.0.0", "--port", "8545"]
     ports:
       - "8545:8545"
+    healthcheck:
+      test: ["CMD", "cast", "block-number", "--rpc-url", "http://127.0.0.1:8545"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
 
   api:
     build: .
@@ -25,7 +30,20 @@ services:
     volumes:
       - softhsm-data:/data
     depends_on:
-      - anvil
+      anvil:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3000/health').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+      start_period: 40s
 
 volumes:
   softhsm-data:
