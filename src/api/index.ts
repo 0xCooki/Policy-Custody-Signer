@@ -10,7 +10,7 @@ import { config } from "src/config.js";
 import { listAuditEvents, listAuditEventsForIntent } from "src/db/audit.js";
 import { openDb } from "src/db/client.js";
 import { createIntent, getIntent } from "src/db/intents.js";
-import { createWallet, listWallets } from "src/db/wallets.js";
+import { createWallet, getWallet, listWallets } from "src/db/wallets.js";
 import {
   ApiErrorCode,
   Asset,
@@ -83,6 +83,10 @@ app.post("/intents", authMiddleware, requireRole(Role.Initiator), async (c) => {
     value: string;
   }>();
   const actor = c.get("actor");
+
+  if (!getWallet(db, body.fromWalletId)) {
+    return c.json({ error: ApiErrorCode.NotFound }, 404);
+  }
 
   const decision = evaluateCreate({ to: body.to, value: BigInt(body.value) }, policyConfig);
   if (!decision.ok) {
