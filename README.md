@@ -108,7 +108,7 @@ Reset the local SQLite file: `pnpm db:reset`
 
 Auth header: `Authorization: Bearer <key>` using keys from `.env` / `.env.example` (defaults: `dev-initiator`, `dev-approver`, `dev-admin`).
 
-Policy (`POLICY_MAX_VALUE`, `POLICY_ALLOWLIST`, `POLICY_QUORUM`) is evaluated on create; destinations must be allowlisted.
+On create, `fromWalletId` must exist; then destination/value policy (`POLICY_MAX_VALUE`, `POLICY_ALLOWLIST`) is evaluated. Quorum (`POLICY_QUORUM`) is applied on approve.
 
 `GET /intents/:id` (initiator of that intent, any approver, or admin) includes `events`: `{ id, type, payload, timestamp }` for audit rows whose payload `intentId` matches. Other initiators get the same 404 as a missing id. `actor` and chain hashes are omitted — this slice is not a verifiable chain. Admin `GET /audit` returns `{ events, verified }` where `verified` is computed server-side over the raw chain (including actor). Response events keep `prevHash` / `eventHash` and replace `actor` with `role`.
 
