@@ -103,8 +103,8 @@ Reset the local SQLite file: `pnpm db:reset`
 1. **Create wallet** — `admin` API key
 2. **Create intent** — `initiator` API key
 3. **Approve** — `approver` API key (maker ≠ checker; quorum from policy)
-4. **Execute** — `approver` or `admin` — sign → match signed bytes to the intent → broadcast → confirm. The intent stays `broadcast` with `txHash` until the receipt lands. Execute refuses if that wallet already has a `broadcast` intent (`already_claimed`). An in-process lock covers claim through persist (`execution_in_progress`); it is released once hash+raw are durable so a hung RPC wait does not block reconcile. The lock is not shared across processes.
-5. **Reconcile** — `admin` `POST /intents/:id/reconcile` recovers a crashed `broadcast`: rebroadcast the stored raw tx if the hash is not yet on chain, confirm from the receipt, or fail closed. Confirmed and failed intents return the stored row. A broadcast with no hash or stored raw is unclaimed back to `approved` so execute can retry (`ExecutionAborted`); persist of hash+raw is a CAS, so an in-flight execute that lost the claim will not send. Pending txs with a durable hash stay `broadcast` (`tx_pending`). After confirm or fail, `signed_raw_tx` is cleared. The signed raw tx is not returned on the API.
+4. **Execute** — `approver` or `admin` — sign, persist hash+raw, broadcast, confirm. One `broadcast` intent per wallet. An in-process lock covers claim through persist so reconcile can run once the hash is durable.
+5. **Reconcile** — `admin` `POST /intents/:id/reconcile` recovers a crashed `broadcast`: unclaim if nothing was signed, rebroadcast the stored raw tx if needed, then confirm or fail from the receipt. The signed raw tx is not returned on the API.
 6. **Audit** — `admin` `GET /audit` (`{ events, verified }`; `verified` is computed on the stored chain)
 
 Auth header: `Authorization: Bearer <key>` using keys from `.env` / `.env.example` (defaults: `dev-initiator`, `dev-approver`, `dev-admin`).

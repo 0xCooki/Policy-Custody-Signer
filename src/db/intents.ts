@@ -70,26 +70,10 @@ export function getIntent(db: Db, id: string): TransferIntent | undefined {
   return row ? rowToIntent(row) : undefined;
 }
 
-export function updateIntentExecution(
-  db: Db,
-  id: string,
-  status: IntentStatus,
-  txHash: Hex,
-  signedRawTx?: Hex,
-): void {
-  if (signedRawTx !== undefined) {
-    db.prepare(`UPDATE intents SET status = ?, tx_hash = ?, signed_raw_tx = ? WHERE id = ?`).run(
-      status,
-      txHash,
-      signedRawTx,
-      id,
-    );
-    return;
-  }
+export function updateIntentExecution(db: Db, id: string, status: IntentStatus, txHash: Hex): void {
   db.prepare(`UPDATE intents SET status = ?, tx_hash = ? WHERE id = ?`).run(status, txHash, id);
 }
 
-/** Signed raw tx is stored for rebroadcast only — never mapped onto TransferIntent. */
 export function getIntentSignedRawTx(db: Db, id: string): Hex | undefined {
   const row = db.prepare(`SELECT signed_raw_tx FROM intents WHERE id = ?`).get(id) as
     | { signed_raw_tx: string | null }
@@ -117,14 +101,6 @@ export function isUniqueConstraintError(err: unknown): boolean {
   );
 }
 
-export function walletHasBroadcastIntent(db: Db, fromWalletId: string): boolean {
-  const row = db
-    .prepare(`SELECT 1 FROM intents WHERE from_wallet_id = ? AND status = ? LIMIT 1`)
-    .get(fromWalletId, IntentStatus.Broadcast);
-  return row !== undefined;
-}
-
-/** Release a claimed intent that never persisted a hash or signed raw tx. */
 export function unclaimBroadcastIntent(db: Db, id: string): boolean {
   const result = db
     .prepare(
@@ -134,7 +110,6 @@ export function unclaimBroadcastIntent(db: Db, id: string): boolean {
   return result.changes === 1;
 }
 
-/** CAS: write hash+raw only if this claim is still Broadcast and unsigned. */
 export function persistBroadcastSignature(
   db: Db,
   id: string,
@@ -150,36 +125,16 @@ export function persistBroadcastSignature(
   return result.changes === 1;
 }
 
-/** CAS: only mutate a row still in Broadcast. Returns whether this writer won. */
 export function transitionBroadcastIntent(
   db: Db,
   id: string,
   status: IntentStatus,
-  txHash?: Hex,
+  txHash: Hex,
 ): boolean {
-  const clearRaw = status === IntentStatus.Confirmed || status === IntentStatus.Failed;
-  if (txHash !== undefined && clearRaw) {
-    const result = db
-      .prepare(
-        `UPDATE intents SET status = ?, tx_hash = ?, signed_raw_tx = NULL WHERE id = ? AND status = ?`,
-      )
-      .run(status, txHash, id, IntentStatus.Broadcast);
-    return result.changes === 1;
-  }
-  if (txHash !== undefined) {
-    const result = db
-      .prepare(`UPDATE intents SET status = ?, tx_hash = ? WHERE id = ? AND status = ?`)
-      .run(status, txHash, id, IntentStatus.Broadcast);
-    return result.changes === 1;
-  }
-  if (clearRaw) {
-    const result = db
-      .prepare(`UPDATE intents SET status = ?, signed_raw_tx = NULL WHERE id = ? AND status = ?`)
-      .run(status, id, IntentStatus.Broadcast);
-    return result.changes === 1;
-  }
   const result = db
-    .prepare(`UPDATE intents SET status = ? WHERE id = ? AND status = ?`)
-    .run(status, id, IntentStatus.Broadcast);
+    .prepare(
+      `UPDATE intents SET status = ?, tx_hash = ?, signed_raw_tx = NULL WHERE id = ? AND status = ?`,
+    )
+    .run(status, txHash, id, IntentStatus.Broadcast);
   return result.changes === 1;
 }

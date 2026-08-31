@@ -7,7 +7,6 @@ import {
   getIntent,
   isUniqueConstraintError,
   persistBroadcastSignature,
-  walletHasBroadcastIntent,
 } from "src/db/intents.js";
 import { getWallet } from "src/db/wallets.js";
 import type { TransferIntent } from "src/domain/types.js";
@@ -16,7 +15,6 @@ import {
   decodeSignedRawTx,
   hashesEqual,
   markBroadcastOutcome,
-  receiptError,
   requireIntent,
   txMatchesIntent,
   unclaimIdleBroadcast,
@@ -34,7 +32,6 @@ export async function executeIntent(
 ): Promise<{ intent: TransferIntent; txHash: Hex }> {
   const lock = acquireExecution(intentId);
   let claimed = false;
-  let txHash: Hex | undefined;
   let signed = false;
 
   try {
@@ -52,13 +49,6 @@ export async function executeIntent(
         const wallet = getWallet(db, intent.fromWalletId);
         if (!wallet)
           throw new AppError(ApiErrorCode.NotFound, `Wallet not found: ${intent.fromWalletId}`);
-
-        if (walletHasBroadcastIntent(db, intent.fromWalletId)) {
-          throw new AppError(
-            ApiErrorCode.AlreadyClaimed,
-            `Wallet ${intent.fromWalletId} already has a broadcast intent`,
-          );
-        }
 
         try {
           if (!claimIntentForExecution(db, intentId)) {
@@ -92,94 +82,56 @@ export async function executeIntent(
     if (decoded === undefined || !txMatchesIntent(decoded, claim.intent, claim.wallet.address)) {
       throw new AppError(ApiErrorCode.ReconcileMismatch, "signed tx does not match intent");
     }
-    const broadcastHash = keccak256(signedTx);
+    const txHash = keccak256(signedTx);
 
-    // Persist hash+raw in its own commit so an audit write failure cannot
-    // roll back the only copy of a signature. Mark signed only after this
-    // commit: a failed persist was never sent and is safe to unclaim.
-    if (!persistBroadcastSignature(db, intentId, broadcastHash, signedTx)) {
+    if (!persistBroadcastSignature(db, intentId, txHash, signedTx)) {
       throw new AppError(
         ApiErrorCode.InvalidStatus,
         `Intent ${intentId} is no longer claimed for execution`,
       );
     }
     signed = true;
-    txHash = broadcastHash;
-    // Hash+raw are durable: drop this claim so a hung send/wait does not block
-    // reconcile. finally still runs releaseExecution(lock); that is a no-op once
-    // this token is no longer the holder.
     releaseExecution(lock);
+
     appendAuditEvent(db, {
       type: AuditEventType.SignRequested,
-      payload: { intentId, txHash: broadcastHash },
+      payload: { intentId, txHash },
       actor: actorId,
     });
 
     const sentHash = await broadcastSignedTx(signedTx);
-    if (!hashesEqual(sentHash, broadcastHash)) {
-      throw new Error(`broadcast hash mismatch: expected ${broadcastHash}, got ${sentHash}`);
+    if (!hashesEqual(sentHash, txHash)) {
+      throw new Error(`broadcast hash mismatch: expected ${txHash}, got ${sentHash}`);
     }
     appendAuditEvent(db, {
       type: AuditEventType.TxBroadcast,
-      payload: { intentId, txHash: broadcastHash },
+      payload: { intentId, txHash },
       actor: actorId,
     });
 
     const receipt = await waitForTx(txHash);
-    if (receipt.status !== "success") {
-      markBroadcastOutcome(db, {
-        intentId,
-        actorId,
-        txHash,
-        status: IntentStatus.Failed,
-        type: AuditEventType.TxFailed,
-        payload: {
-          intentId,
-          txHash,
-          status: receipt.status,
-          blockNumber: receipt.blockNumber.toString(),
-          error: receiptError(receipt.status),
-        },
-      });
-      const latest = requireIntent(db, intentId);
-      if (latest.status === IntentStatus.Confirmed && hashesEqual(latest.txHash, txHash)) {
-        return { intent: latest, txHash };
-      }
-      throw new AppError(ApiErrorCode.TxReverted, receiptError(receipt.status));
-    }
-
+    const failed = receipt.status !== "success";
     markBroadcastOutcome(db, {
       intentId,
       actorId,
       txHash,
-      status: IntentStatus.Confirmed,
-      type: AuditEventType.TxConfirmed,
+      status: failed ? IntentStatus.Failed : IntentStatus.Confirmed,
+      type: failed ? AuditEventType.TxFailed : AuditEventType.TxConfirmed,
       payload: {
         intentId,
         txHash,
         status: receipt.status,
         blockNumber: receipt.blockNumber.toString(),
+        ...(failed ? { error: "receipt status is not success" } : {}),
       },
     });
 
-    const updatedIntent = requireIntent(db, intentId);
-    if (
-      updatedIntent.status === IntentStatus.Confirmed &&
-      hashesEqual(updatedIntent.txHash, txHash)
-    ) {
-      return { intent: updatedIntent, txHash };
-    }
-    if (updatedIntent.status === IntentStatus.Failed) {
-      throw new AppError(ApiErrorCode.TxReverted, "receipt status is not success");
-    }
-    throw new AppError(ApiErrorCode.InvalidStatus, `Intent ${intentId} is ${updatedIntent.status}`);
+    const updated = requireIntent(db, intentId);
+    if (updated.status === IntentStatus.Confirmed) return { intent: updated, txHash };
+    throw new AppError(ApiErrorCode.TxReverted, "receipt status is not success");
   } catch (err) {
     const message = err instanceof Error ? err.message : "execute failed";
-
-    if (claimed && txHash === undefined && !signed) {
-      unclaimIdleBroadcast(db, intentId, actorId, message);
-    }
-
+    if (claimed && !signed) unclaimIdleBroadcast(db, intentId, actorId, message);
     if (err instanceof AppError) throw err;
     throw new Error(message);
   } finally {
