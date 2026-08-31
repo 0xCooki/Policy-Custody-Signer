@@ -3,12 +3,14 @@ import { verifyAuditChain } from "src/audit/verify.js";
 import { publicClient } from "src/chain/client.js";
 import { listAuditEvents } from "src/db/audit.js";
 import { openDb } from "src/db/client.js";
+import { updateIntentStatus } from "src/db/intents.js";
 import { AuditEventType, IntentStatus } from "src/domain/types.js";
 import { addressFromNumber } from "src/utils/address.js";
 import {
   type ApproveJson,
   type ExecuteJson,
   type IntentJson,
+  type ReconcileJson,
   readJson,
   type WalletJson,
 } from "test/helpers/json.js";
@@ -99,5 +101,55 @@ describe("unsafe intent → sign → tx hash (Anvil required)", () => {
         AuditEventType.TxConfirmed,
       ]),
     );
+  });
+
+  it("reconciles a Broadcast intent from the on-chain receipt after a crash window", async () => {
+    const walletRes = await app.request("/wallets", { method: "POST", headers: adminHeaders });
+    expect(walletRes.status).toBe(201);
+    const wallet = await readJson<WalletJson>(walletRes);
+
+    const intentRes = await app.request("/intents", {
+      method: "POST",
+      headers: initiatorHeaders,
+      body: JSON.stringify({
+        fromWalletId: wallet.id,
+        to: addressFromNumber(200),
+        value: (10n ** 15n).toString(),
+      }),
+    });
+    expect(intentRes.status).toBe(201);
+    const intent = await readJson<IntentJson>(intentRes);
+
+    const approveRes = await app.request(`/intents/${intent.id}/approve`, {
+      method: "POST",
+      headers: approverHeaders,
+    });
+    expect(approveRes.status).toBe(200);
+
+    const execRes = await app.request(`/intents/${intent.id}/execute`, {
+      method: "POST",
+      headers: adminHeaders,
+    });
+    expect(execRes.status).toBe(200);
+    const executed = await readJson<ExecuteJson>(execRes);
+    expect(executed.intent.status).toBe(IntentStatus.Confirmed);
+
+    // Crash after broadcast: hash is on the row, receipt is on-chain, status never left Broadcast.
+    updateIntentStatus(openDb(), intent.id, IntentStatus.Broadcast);
+
+    const recRes = await app.request(`/intents/${intent.id}/reconcile`, {
+      method: "POST",
+      headers: adminHeaders,
+    });
+    expect(recRes.status).toBe(200);
+    const reconciled = await readJson<ReconcileJson>(recRes);
+    expect(reconciled.intent.status).toBe(IntentStatus.Confirmed);
+    expect(reconciled.txHash).toBe(executed.txHash);
+
+    const intentGet = await readJson<IntentJson>(
+      await app.request(`/intents/${intent.id}`, { headers: initiatorHeaders }),
+    );
+    expect(intentGet.events?.filter((e) => e.type === AuditEventType.TxConfirmed)).toHaveLength(2);
+    expect(verifyAuditChain(listAuditEvents(openDb()))).toBe(true);
   });
 });

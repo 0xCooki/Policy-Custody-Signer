@@ -23,6 +23,7 @@ import { evaluateCreate } from "src/policy/engine.js";
 import type { PolicyConfig } from "src/policy/types.js";
 import { approveIntent } from "src/services/approveIntent.js";
 import { executeIntent } from "src/services/executeIntent.js";
+import { reconcileIntent } from "src/services/reconcileIntent.js";
 import { createSigner } from "src/signers/createSigner.js";
 import type { Address } from "src/signers/types.js";
 import { AppError } from "src/utils/errors.js";
@@ -46,6 +47,9 @@ function statusForAppError(err: AppError): 400 | 403 | 404 | 409 | 422 {
       return 403;
     case ApiErrorCode.AlreadyClaimed:
     case ApiErrorCode.TxReverted:
+    case ApiErrorCode.ReconcileMismatch:
+    case ApiErrorCode.TxPending:
+    case ApiErrorCode.ExecutionInProgress:
       return 409;
     case PolicyReason.ValueOverMax:
     case PolicyReason.ToNotAllowed:
@@ -186,6 +190,25 @@ app.post(
     }
   },
 );
+
+app.post("/intents/:id/reconcile", authMiddleware, requireRole(Role.Admin), async (c) => {
+  const actor = c.get("actor");
+  const intent = getIntent(db, c.req.param("id"));
+  if (!intent) return c.json({ error: ApiErrorCode.NotFound }, 404);
+  try {
+    const result = await reconcileIntent(db, intent.id, actor.actorId);
+    return c.json({
+      intent: intentToJson(result.intent),
+      ...(result.txHash !== undefined ? { txHash: result.txHash } : {}),
+    });
+  } catch (err) {
+    if (err instanceof AppError) {
+      return c.json({ error: err.code }, statusForAppError(err));
+    }
+    const message = err instanceof Error ? err.message : "reconcile failed";
+    return c.json({ error: message }, 500);
+  }
+});
 
 export { app };
 

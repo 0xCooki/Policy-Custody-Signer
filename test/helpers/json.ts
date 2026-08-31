@@ -23,4 +23,5 @@ export type IntentJson = {
 };
 export type ApproveJson = { intent: IntentJson; quorumMet: boolean };
 export type ExecuteJson = { intent: IntentJson; txHash: string };
+export type ReconcileJson = { intent: IntentJson; txHash?: string };
 export type AuditJson = { events: AuditEventJson[]; verified: boolean };

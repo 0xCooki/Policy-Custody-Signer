@@ -49,6 +49,9 @@ export const ApiErrorCode = {
   InvalidStatus: "invalid_status",
   AlreadyClaimed: "already_claimed",
   TxReverted: "tx_reverted",
+  ReconcileMismatch: "reconcile_mismatch",
+  TxPending: "tx_pending",
+  ExecutionInProgress: "execution_in_progress",
 } as const;
 export type ApiErrorCode = (typeof ApiErrorCode)[keyof typeof ApiErrorCode];
 
