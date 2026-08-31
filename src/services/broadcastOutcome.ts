@@ -100,15 +100,17 @@ export function failMismatch(
   actorId: string,
   error: string,
   txHash: Hex,
-): never {
+): void {
   db.transaction(() => {
-    if (transitionBroadcastIntent(db, intentId, IntentStatus.Failed, txHash)) {
-      appendAuditEvent(db, {
-        type: AuditEventType.ReconcileMismatch,
-        payload: { intentId, txHash, error },
-        actor: actorId,
-      });
-    }
+    const intent = getIntent(db, intentId);
+    if (intent?.status !== IntentStatus.Broadcast) return;
+    appendAuditEvent(db, {
+      type: AuditEventType.ReconcileMismatch,
+      payload: { intentId, txHash, error },
+      actor: actorId,
+    });
   })();
-  throw new AppError(ApiErrorCode.ReconcileMismatch, error);
+  if (requireIntent(db, intentId).status === IntentStatus.Broadcast) {
+    throw new AppError(ApiErrorCode.ReconcileMismatch, error);
+  }
 }

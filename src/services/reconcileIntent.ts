@@ -64,12 +64,14 @@ export async function reconcileIntent(
 
     if (signedRawTx !== undefined && !hashesEqual(keccak256(signedRawTx), txHash)) {
       failMismatch(db, current.id, actorId, "stored raw tx does not match tx hash", txHash);
+      return { intent: requireIntent(db, current.id), txHash };
     }
 
     if (signedRawTx !== undefined) {
       const decoded = await decodeSignedRawTx(signedRawTx);
       if (decoded === undefined || !txMatchesIntent(decoded, current, wallet.address)) {
         failMismatch(db, current.id, actorId, "stored raw tx does not match intent", txHash);
+        return { intent: requireIntent(db, current.id), txHash };
       }
     }
 
@@ -117,6 +119,7 @@ export async function reconcileIntent(
 
     if (!txMatchesIntent(tx, current, wallet.address)) {
       failMismatch(db, current.id, actorId, "chain tx does not match intent", txHash);
+      return { intent: requireIntent(db, current.id), txHash };
     }
 
     let receipt: Awaited<ReturnType<typeof getTxReceipt>>;

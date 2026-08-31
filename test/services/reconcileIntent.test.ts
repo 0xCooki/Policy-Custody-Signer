@@ -6,6 +6,7 @@ import {
   claimIntentForExecution,
   createIntent,
   getIntent,
+  getIntentSignedRawTx,
   persistBroadcastSignature,
   transitionBroadcastIntent,
 } from "src/db/intents.js";
@@ -181,7 +182,19 @@ describe("reconcileIntent", () => {
     await expect(reconcileIntent(db, intent.id, "dev-admin")).rejects.toMatchObject({
       code: ApiErrorCode.ReconcileMismatch,
     });
-    expect(getIntent(db, intent.id)?.status).toBe(IntentStatus.Failed);
+    expect(getIntent(db, intent.id)?.status).toBe(IntentStatus.Broadcast);
+    expect(getIntentSignedRawTx(db, intent.id)).toBe(signedRawTx);
+    const second = createIntent(db, {
+      id: randomUUID(),
+      fromWalletId: intent.fromWalletId,
+      to,
+      value,
+      asset: Asset.Eth,
+      initiatorId: "dev-initiator",
+      status: IntentStatus.Approved,
+      createdAt: new Date().toISOString(),
+    });
+    expect(() => claimIntentForExecution(db, second.id)).toThrow();
   });
 
   it("rebroadcasts the stored raw tx when the hash is not yet on chain, then confirms", async () => {
@@ -205,6 +218,7 @@ describe("reconcileIntent", () => {
     await expect(reconcileIntent(db, intent.id, "dev-admin")).rejects.toMatchObject({
       code: ApiErrorCode.ReconcileMismatch,
     });
-    expect(getIntent(db, intent.id)?.status).toBe(IntentStatus.Failed);
+    expect(getIntent(db, intent.id)?.status).toBe(IntentStatus.Broadcast);
+    expect(getIntentSignedRawTx(db, intent.id)).toBe("0xbeef");
   });
 });
