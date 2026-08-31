@@ -103,8 +103,9 @@ Reset the local SQLite file: `pnpm db:reset`
 1. **Create wallet** — `admin` API key
 2. **Create intent** — `initiator` API key
 3. **Approve** — `approver` API key (maker ≠ checker; quorum from policy)
-4. **Execute** — `approver` or `admin` — sign → broadcast → confirm
-5. **Audit** — `admin` `GET /audit` (`{ events, verified }`; `verified` is computed on the stored chain)
+4. **Execute** — `approver` or `admin` — sign, persist hash+raw, broadcast, confirm. One `broadcast` intent per wallet. An in-process lock covers claim through persist so reconcile can run once the hash is durable. The lock is per process; run a single API instance.
+5. **Reconcile** — `admin` `POST /intents/:id/reconcile` recovers a crashed `broadcast`: unclaim if nothing was signed, rebroadcast the stored raw tx if needed, then confirm or fail from the receipt. A mismatch leaves the row `broadcast` (hash+raw intact) so the wallet stays occupied; a reverted receipt still marks Failed. The signed raw tx is not returned on the API.
+6. **Audit** — `admin` `GET /audit` (`{ events, verified }`; `verified` is computed on the stored chain)
 
 Auth header: `Authorization: Bearer <key>` using keys from `.env` / `.env.example` (defaults: `dev-initiator`, `dev-approver`, `dev-admin`).
 

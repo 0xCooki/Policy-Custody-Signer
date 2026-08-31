@@ -10,3 +10,11 @@ export async function broadcastSignedTx(signedRawTx: Hex): Promise<Hex> {
 export async function waitForTx(txHash: Hex) {
   return publicClient.waitForTransactionReceipt({ hash: txHash });
 }
+
+export async function getTxReceipt(txHash: Hex) {
+  return publicClient.getTransactionReceipt({ hash: txHash });
+}
+
+export async function getTx(txHash: Hex) {
+  return publicClient.getTransaction({ hash: txHash });
+}
