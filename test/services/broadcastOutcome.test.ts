@@ -14,6 +14,35 @@ describe("hashesEqual", () => {
   });
 });
 
+describe("txMatchesIntent", () => {
+  const to = addressFromNumber(200);
+  const from = addressFromNumber(1);
+  const value = 10n ** 15n;
+  const intent = {
+    id: "intent",
+    fromWalletId: "wallet",
+    to,
+    value,
+    asset: Asset.Eth,
+    initiatorId: "dev-initiator",
+    status: IntentStatus.Broadcast,
+    createdAt: new Date().toISOString(),
+  };
+  const matching = { to, from, value, input: "0x" };
+
+  it.each([
+    { name: "matching transfer", tx: matching, ok: true },
+    { name: "zero-padded empty input", tx: { ...matching, input: "0x00" }, ok: true },
+    { name: "different to", tx: { ...matching, to: addressFromNumber(201) }, ok: false },
+    { name: "different value", tx: { ...matching, value: value + 1n }, ok: false },
+    { name: "different from", tx: { ...matching, from: addressFromNumber(99) }, ok: false },
+    { name: "calldata", tx: { ...matching, input: "0xabcd" }, ok: false },
+    { name: "null to", tx: { ...matching, to: null }, ok: false },
+  ] as const)("$name", ({ tx, ok }) => {
+    expect(txMatchesIntent(tx, intent, from)).toBe(ok);
+  });
+});
+
 describe("decodeSignedRawTx", () => {
   const signer = new LocalKeySigner(
     "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80",

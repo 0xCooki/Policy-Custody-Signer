@@ -3,7 +3,6 @@ import Database from "better-sqlite3";
 import { createApproval, getApproval, listApprovalsForIntent } from "src/db/approvals.js";
 import { openDb } from "src/db/client.js";
 import {
-  attachBroadcastTxHash,
   claimIntentForExecution,
   createIntent,
   getIntent,
@@ -170,10 +169,7 @@ describe("db intents", () => {
     });
     expect(claimIntentForExecution(db, created.id)).toBe(true);
     const txHash = "0xabc" as Hex;
-    expect(attachBroadcastTxHash(db, created.id, txHash)).toBe(true);
-    expect(attachBroadcastTxHash(db, created.id, "0xdef" as Hex)).toBe(false);
-    expect(getIntent(db, created.id)?.txHash).toBe(txHash);
-    updateIntentExecution(db, created.id, IntentStatus.Broadcast, txHash, "0xdead" as Hex);
+    expect(persistBroadcastSignature(db, created.id, txHash, "0xdead" as Hex)).toBe(true);
 
     expect(transitionBroadcastIntent(db, created.id, IntentStatus.Confirmed, txHash)).toBe(true);
     expect(getIntent(db, created.id)?.status).toBe(IntentStatus.Confirmed);

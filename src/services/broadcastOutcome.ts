@@ -1,6 +1,6 @@
 import { appendAuditEvent } from "src/audit/log.js";
 import type { Db } from "src/db/client.js";
-import { getIntent, transitionBroadcastIntent } from "src/db/intents.js";
+import { getIntent, transitionBroadcastIntent, unclaimBroadcastIntent } from "src/db/intents.js";
 import {
   ApiErrorCode,
   AuditEventType,
@@ -10,6 +10,10 @@ import {
 import type { Address, Hex } from "src/signers/types.js";
 import { AppError } from "src/utils/errors.js";
 import { parseTransaction, recoverTransactionAddress, type TransactionSerialized } from "viem";
+
+export function intentResult(intent: TransferIntent): { intent: TransferIntent; txHash?: Hex } {
+  return intent.txHash !== undefined ? { intent, txHash: intent.txHash } : { intent };
+}
 
 export function hashesEqual(a: string | undefined, b: string | undefined): boolean {
   return a !== undefined && b !== undefined && a.toLowerCase() === b.toLowerCase();
@@ -26,6 +30,27 @@ export function requireIntent(db: Db, intentId: string): TransferIntent {
   if (!intent)
     throw new AppError(ApiErrorCode.NotFound, `Intent missing after update: ${intentId}`);
   return intent;
+}
+
+/** Release a claimed intent that never persisted a hash or raw. */
+export function unclaimIdleBroadcast(
+  db: Db,
+  intentId: string,
+  actorId: string,
+  error: string,
+): boolean {
+  let unclaimed = false;
+  db.transaction(() => {
+    if (unclaimBroadcastIntent(db, intentId)) {
+      appendAuditEvent(db, {
+        type: AuditEventType.ExecutionAborted,
+        payload: { intentId, error },
+        actor: actorId,
+      });
+      unclaimed = true;
+    }
+  })();
+  return unclaimed;
 }
 
 export function markBroadcastOutcome(
@@ -125,7 +150,7 @@ export function failMismatch(
   })();
   const latest = requireIntent(db, input.intentId);
   if (latest.status === IntentStatus.Confirmed && hashesEqual(latest.txHash, input.txHash)) {
-    return { intent: latest, txHash: latest.txHash };
+    return intentResult(latest);
   }
   throw new AppError(ApiErrorCode.ReconcileMismatch, input.error);
 }

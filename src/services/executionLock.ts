@@ -1,20 +1,27 @@
 import { ApiErrorCode } from "src/domain/types.js";
 import { AppError } from "src/utils/errors.js";
 
-const inFlight = new Set<string>();
+export type ExecutionLock = { readonly intentId: string };
 
-export function acquireExecution(intentId: string): void {
+const inFlight = new Map<string, ExecutionLock>();
+
+export function acquireExecution(intentId: string): ExecutionLock {
   if (inFlight.has(intentId)) {
     throw new AppError(
       ApiErrorCode.ExecutionInProgress,
       `Intent ${intentId} is still being executed`,
     );
   }
-  inFlight.add(intentId);
+  const lock: ExecutionLock = { intentId };
+  inFlight.set(intentId, lock);
+  return lock;
 }
 
-export function releaseExecution(intentId: string): void {
-  inFlight.delete(intentId);
+/** No-op unless `lock` is the current holder. A stale release cannot drop a newer claim. */
+export function releaseExecution(lock: ExecutionLock): void {
+  if (inFlight.get(lock.intentId) === lock) {
+    inFlight.delete(lock.intentId);
+  }
 }
 
 export function isExecutionInFlight(intentId: string): boolean {

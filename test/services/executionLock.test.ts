@@ -13,7 +13,7 @@ afterEach(() => {
 
 describe("executionLock", () => {
   it("refuses a second acquire until release", () => {
-    acquireExecution("intent-1");
+    const lock = acquireExecution("intent-1");
     expect(isExecutionInFlight("intent-1")).toBe(true);
 
     try {
@@ -23,9 +23,27 @@ describe("executionLock", () => {
       expect(err).toMatchObject({ code: ApiErrorCode.ExecutionInProgress });
     }
 
-    releaseExecution("intent-1");
+    releaseExecution(lock);
     expect(isExecutionInFlight("intent-1")).toBe(false);
-    acquireExecution("intent-1");
-    releaseExecution("intent-1");
+    const next = acquireExecution("intent-1");
+    releaseExecution(next);
+  });
+
+  it("does not drop a newer holder on a stale release", () => {
+    const first = acquireExecution("intent-1");
+    releaseExecution(first);
+    const second = acquireExecution("intent-1");
+
+    releaseExecution(first);
+    expect(isExecutionInFlight("intent-1")).toBe(true);
+    try {
+      acquireExecution("intent-1");
+      expect.unreachable("expected ExecutionInProgress");
+    } catch (err) {
+      expect(err).toMatchObject({ code: ApiErrorCode.ExecutionInProgress });
+    }
+
+    releaseExecution(second);
+    expect(isExecutionInFlight("intent-1")).toBe(false);
   });
 });

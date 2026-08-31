@@ -150,14 +150,6 @@ export function persistBroadcastSignature(
   return result.changes === 1;
 }
 
-/** Persist a recovered hash onto a Broadcast row that still has none. */
-export function attachBroadcastTxHash(db: Db, id: string, txHash: Hex): boolean {
-  const result = db
-    .prepare(`UPDATE intents SET tx_hash = ? WHERE id = ? AND status = ? AND tx_hash IS NULL`)
-    .run(txHash, id, IntentStatus.Broadcast);
-  return result.changes === 1;
-}
-
 /** CAS: only mutate a row still in Broadcast. Returns whether this writer won. */
 export function transitionBroadcastIntent(
   db: Db,

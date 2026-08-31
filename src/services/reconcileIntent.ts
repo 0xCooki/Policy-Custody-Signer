@@ -2,12 +2,7 @@ import { appendAuditEvent } from "src/audit/log.js";
 import { broadcastSignedTx, getTx, getTxReceipt } from "src/chain/broadcast.js";
 import { listAuditEventsForIntent } from "src/db/audit.js";
 import type { Db } from "src/db/client.js";
-import {
-  attachBroadcastTxHash,
-  getIntent,
-  getIntentSignedRawTx,
-  unclaimBroadcastIntent,
-} from "src/db/intents.js";
+import { getIntent, getIntentSignedRawTx } from "src/db/intents.js";
 import { getWallet } from "src/db/wallets.js";
 import type { TransferIntent } from "src/domain/types.js";
 import { ApiErrorCode, AuditEventType, IntentStatus } from "src/domain/types.js";
@@ -15,15 +10,17 @@ import {
   decodeSignedRawTx,
   failMismatch,
   hashesEqual,
+  intentResult,
   markBroadcastOutcome,
   receiptError,
   requireIntent,
   txMatchesIntent,
+  unclaimIdleBroadcast,
 } from "src/services/broadcastOutcome.js";
 import { acquireExecution, releaseExecution } from "src/services/executionLock.js";
 import type { Address, Hex } from "src/signers/types.js";
 import { AppError } from "src/utils/errors.js";
-import { isHex, keccak256, TransactionNotFoundError, TransactionReceiptNotFoundError } from "viem";
+import { keccak256, TransactionNotFoundError, TransactionReceiptNotFoundError } from "viem";
 
 export async function reconcileIntent(
   db: Db,
@@ -33,7 +30,7 @@ export async function reconcileIntent(
   const intent = getIntent(db, intentId);
   if (!intent) throw new AppError(ApiErrorCode.NotFound, `Intent not found: ${intentId}`);
   if (intent.status === IntentStatus.Confirmed || intent.status === IntentStatus.Failed) {
-    return intent.txHash !== undefined ? { intent, txHash: intent.txHash } : { intent };
+    return intentResult(intent);
   }
   if (intent.status !== IntentStatus.Broadcast) {
     throw new AppError(
@@ -46,11 +43,11 @@ export async function reconcileIntent(
   if (!wallet)
     throw new AppError(ApiErrorCode.NotFound, `Wallet not found: ${intent.fromWalletId}`);
 
-  acquireExecution(intent.id);
+  const lock = acquireExecution(intent.id);
   try {
     return await reconcileBroadcast(db, intent.id, actorId, wallet.address);
   } finally {
-    releaseExecution(intent.id);
+    releaseExecution(lock);
   }
 }
 
@@ -62,7 +59,7 @@ async function reconcileBroadcast(
 ): Promise<{ intent: TransferIntent; txHash?: Hex }> {
   let intent = requireIntent(db, intentId);
   if (intent.status === IntentStatus.Confirmed || intent.status === IntentStatus.Failed) {
-    return intent.txHash !== undefined ? { intent, txHash: intent.txHash } : { intent };
+    return intentResult(intent);
   }
   if (intent.status === IntentStatus.Approved) {
     return { intent };
@@ -74,44 +71,17 @@ async function reconcileBroadcast(
     );
   }
 
-  let events = listAuditEventsForIntent(db, intent.id);
   let signedRawTx = getIntentSignedRawTx(db, intent.id);
-  let txHash = intent.txHash ?? hashFromRaw(signedRawTx) ?? latestStoredHash(events);
+  let txHash = intent.txHash ?? hashFromRaw(signedRawTx);
 
   if (txHash === undefined) {
-    // Persist is before broadcast, so a Broadcast row with no recoverable hash
-    // never went on chain. Unclaim so execute can retry.
-    db.transaction(() => {
-      if (unclaimBroadcastIntent(db, intent.id)) {
-        appendAuditEvent(db, {
-          type: AuditEventType.TxFailed,
-          payload: { intentId: intent.id, error: "transaction hash not yet available" },
-          actor: actorId,
-        });
-      }
-    })();
+    unclaimIdleBroadcast(db, intent.id, actorId, "transaction hash not yet available");
     intent = requireIntent(db, intentId);
-    if (intent.status !== IntentStatus.Broadcast) {
-      return intent.txHash !== undefined ? { intent, txHash: intent.txHash } : { intent };
-    }
-    events = listAuditEventsForIntent(db, intent.id);
+    if (intent.status !== IntentStatus.Broadcast) return intentResult(intent);
     signedRawTx = getIntentSignedRawTx(db, intent.id);
-    txHash = intent.txHash ?? hashFromRaw(signedRawTx) ?? latestStoredHash(events);
+    txHash = intent.txHash ?? hashFromRaw(signedRawTx);
     if (txHash === undefined) {
       throw new AppError(ApiErrorCode.TxPending, "transaction hash not yet available");
-    }
-  }
-
-  if (intent.txHash === undefined) {
-    attachBroadcastTxHash(db, intent.id, txHash);
-    const latest = requireIntent(db, intent.id);
-    if (latest.txHash !== undefined && !hashesEqual(latest.txHash, txHash)) {
-      return failMismatch(db, {
-        intentId: intent.id,
-        actorId,
-        txHash: latest.txHash,
-        error: "stored tx hash does not match recovered hash",
-      });
     }
   }
 
@@ -139,7 +109,6 @@ async function reconcileBroadcast(
     actorId,
     txHash,
     signedRawTx,
-    events,
     intent,
     from,
   });
@@ -213,7 +182,6 @@ async function loadChainTx(
     actorId: string;
     txHash: Hex;
     signedRawTx: Hex | undefined;
-    events: { type: string; payload: Record<string, unknown> }[];
     intent: TransferIntent;
     from: Address;
   },
@@ -254,7 +222,6 @@ async function rebroadcastIfPossible(
     actorId: string;
     txHash: Hex;
     signedRawTx: Hex | undefined;
-    events: { type: string; payload: Record<string, unknown> }[];
     intent: TransferIntent;
     from: Address;
   },
@@ -299,47 +266,22 @@ async function rebroadcastIfPossible(
     throw new Error(`broadcast hash mismatch: expected ${input.txHash}, got ${sentHash}`);
   }
 
-  recordBroadcast(db, input);
+  recordBroadcast(db, input.intentId, input.actorId, input.txHash);
 }
 
-function recordBroadcast(
-  db: Db,
-  input: {
-    intentId: string;
-    actorId: string;
-    txHash: Hex;
-    events: { type: string; payload: Record<string, unknown> }[];
-  },
-): void {
-  const alreadyLogged = input.events.some(
+function recordBroadcast(db: Db, intentId: string, actorId: string, txHash: Hex): void {
+  const alreadyLogged = listAuditEventsForIntent(db, intentId).some(
     (event) =>
       event.type === AuditEventType.TxBroadcast &&
       typeof event.payload.txHash === "string" &&
-      hashesEqual(event.payload.txHash, input.txHash),
+      hashesEqual(event.payload.txHash, txHash),
   );
   if (alreadyLogged) return;
   appendAuditEvent(db, {
     type: AuditEventType.TxBroadcast,
-    payload: { intentId: input.intentId, txHash: input.txHash },
-    actor: input.actorId,
+    payload: { intentId, txHash },
+    actor: actorId,
   });
-}
-
-function latestStoredHash(
-  events: { type: string; payload: Record<string, unknown> }[],
-): Hex | undefined {
-  for (let i = events.length - 1; i >= 0; i--) {
-    const event = events[i];
-    if (
-      event?.type !== AuditEventType.TxBroadcast &&
-      event?.type !== AuditEventType.SignRequested
-    ) {
-      continue;
-    }
-    const hash = event.payload.txHash;
-    if (typeof hash === "string" && isHex(hash)) return hash;
-  }
-  return undefined;
 }
 
 function hashFromRaw(signedRawTx: Hex | undefined): Hex | undefined {

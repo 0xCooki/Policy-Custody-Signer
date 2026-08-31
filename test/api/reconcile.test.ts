@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { app } from "src/api/index.js";
 import { openDb } from "src/db/client.js";
-import { claimIntentForExecution, updateIntentStatus } from "src/db/intents.js";
+import { updateIntentStatus } from "src/db/intents.js";
 import { ApiErrorCode, Asset, IntentStatus } from "src/domain/types.js";
 import * as reconcileIntentService from "src/services/reconcileIntent.js";
 import type { Hex } from "src/signers/types.js";
@@ -101,30 +101,20 @@ describe("Reconcile API", () => {
     });
   });
 
-  it("returns 409 when reconcile reports TxReverted, ReconcileMismatch, TxPending, or ExecutionInProgress", async () => {
+  it.each([
+    ApiErrorCode.TxReverted,
+    ApiErrorCode.ReconcileMismatch,
+    ApiErrorCode.TxPending,
+    ApiErrorCode.ExecutionInProgress,
+  ])("returns 409 when reconcile reports %s", async (code) => {
     const intent = await createPendingIntent();
-    const approveRes = await app.request(`/intents/${intent.id}/approve`, {
+    vi.spyOn(reconcileIntentService, "reconcileIntent").mockRejectedValueOnce(new AppError(code));
+    const res = await app.request(`/intents/${intent.id}/reconcile`, {
       method: "POST",
-      headers: approverHeaders,
+      headers: adminHeaders,
     });
-    expect(approveRes.status).toBe(200);
-    expect(claimIntentForExecution(openDb(), intent.id)).toBe(true);
-
-    const cases = [
-      ApiErrorCode.TxReverted,
-      ApiErrorCode.ReconcileMismatch,
-      ApiErrorCode.TxPending,
-      ApiErrorCode.ExecutionInProgress,
-    ] as const;
-    for (const code of cases) {
-      vi.spyOn(reconcileIntentService, "reconcileIntent").mockRejectedValueOnce(new AppError(code));
-      const res = await app.request(`/intents/${intent.id}/reconcile`, {
-        method: "POST",
-        headers: adminHeaders,
-      });
-      expect(res.status).toBe(409);
-      expect(await res.json()).toEqual({ error: code });
-    }
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ error: code });
   });
 
   it("returns 500 when reconcile throws a non-AppError", async () => {

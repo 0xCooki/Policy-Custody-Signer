@@ -30,6 +30,7 @@ export const AuditEventType = {
   TxBroadcast: "TxBroadcast",
   TxConfirmed: "TxConfirmed",
   TxFailed: "TxFailed",
+  ExecutionAborted: "ExecutionAborted",
   ReconcileMismatch: "ReconcileMismatch",
 } as const;
 export type AuditEventType = (typeof AuditEventType)[keyof typeof AuditEventType];

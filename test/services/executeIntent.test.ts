@@ -206,6 +206,8 @@ describe("executeIntent edge cases", () => {
     expect(intentsDb.getIntent(db, intent.id)?.status).toBe(IntentStatus.Approved);
     const events = listAuditEventsForIntent(db, intent.id);
     expect(events.some((e) => e.type === AuditEventType.SignRequested)).toBe(false);
+    expect(events.some((e) => e.type === AuditEventType.ExecutionAborted)).toBe(true);
+    expect(events.some((e) => e.type === AuditEventType.TxFailed)).toBe(false);
   });
 
   it("restores Approved when persist fails after sign", async () => {
@@ -480,5 +482,64 @@ describe("executeIntent edge cases", () => {
     expect(
       listAuditEventsForIntent(db, intent.id).filter((e) => e.type === AuditEventType.TxConfirmed),
     ).toHaveLength(1);
+  });
+
+  it("does not drop reconcile's lock when execute finishes after persist", async () => {
+    const { intent } = seedApprovedIntent();
+    vi.spyOn(buildTransferTx, "buildTransferTx").mockResolvedValueOnce(sampleUnsigned);
+    vi.spyOn(broadcast, "broadcastSignedTx").mockResolvedValueOnce(predictedHash);
+
+    let failWait!: (err: Error) => void;
+    let waitStarted!: () => void;
+    const sawWait = new Promise<void>((resolve) => {
+      waitStarted = resolve;
+    });
+    const waiting = new Promise<never>((_, reject) => {
+      failWait = reject;
+    });
+    vi.spyOn(broadcast, "waitForTx").mockImplementation(async () => {
+      waitStarted();
+      return waiting;
+    });
+
+    let sawGetTx!: () => void;
+    let releaseTx!: (tx: unknown) => void;
+    const getTxStarted = new Promise<void>((resolve) => {
+      sawGetTx = resolve;
+    });
+    const txPending = new Promise((resolve) => {
+      releaseTx = resolve;
+    });
+    vi.spyOn(broadcast, "getTx").mockImplementation(async () => {
+      sawGetTx();
+      return txPending as never;
+    });
+    vi.spyOn(broadcast, "getTxReceipt").mockResolvedValue({
+      status: "success",
+      blockNumber: 1n,
+    } as never);
+
+    const executePromise = executeIntent(db, stubSigner, intent.id, "dev-admin");
+    await sawWait;
+
+    const reconcilePromise = reconcileIntent(db, intent.id, "dev-admin");
+    await getTxStarted;
+    expect(isExecutionInFlight(intent.id)).toBe(true);
+
+    failWait(new Error("dropped"));
+    await expect(executePromise).rejects.toThrow(/dropped/);
+
+    expect(isExecutionInFlight(intent.id)).toBe(true);
+    try {
+      acquireExecution(intent.id);
+      expect.unreachable("expected ExecutionInProgress");
+    } catch (err) {
+      expect(err).toMatchObject({ code: ApiErrorCode.ExecutionInProgress });
+    }
+
+    releaseTx({ to, from, value, input: "0x" });
+    const rec = await reconcilePromise;
+    expect(rec.intent.status).toBe(IntentStatus.Confirmed);
+    expect(isExecutionInFlight(intent.id)).toBe(false);
   });
 });

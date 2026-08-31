@@ -7,7 +7,6 @@ import {
   getIntent,
   isUniqueConstraintError,
   persistBroadcastSignature,
-  unclaimBroadcastIntent,
   walletHasBroadcastIntent,
 } from "src/db/intents.js";
 import { getWallet } from "src/db/wallets.js";
@@ -20,6 +19,7 @@ import {
   receiptError,
   requireIntent,
   txMatchesIntent,
+  unclaimIdleBroadcast,
 } from "src/services/broadcastOutcome.js";
 import { acquireExecution, releaseExecution } from "src/services/executionLock.js";
 import type { Hex, SignerProvider } from "src/signers/types.js";
@@ -32,7 +32,7 @@ export async function executeIntent(
   intentId: string,
   actorId: string,
 ): Promise<{ intent: TransferIntent; txHash: Hex }> {
-  acquireExecution(intentId);
+  const lock = acquireExecution(intentId);
   let claimed = false;
   let txHash: Hex | undefined;
   let signed = false;
@@ -105,8 +105,10 @@ export async function executeIntent(
     }
     signed = true;
     txHash = broadcastHash;
-    // Hash+raw are durable: drop the lock so a hung send/wait does not block reconcile.
-    releaseExecution(intentId);
+    // Hash+raw are durable: drop this claim so a hung send/wait does not block
+    // reconcile. finally still runs releaseExecution(lock); that is a no-op once
+    // this token is no longer the holder.
+    releaseExecution(lock);
     appendAuditEvent(db, {
       type: AuditEventType.SignRequested,
       payload: { intentId, txHash: broadcastHash },
@@ -175,21 +177,12 @@ export async function executeIntent(
     const message = err instanceof Error ? err.message : "execute failed";
 
     if (claimed && txHash === undefined && !signed) {
-      // Build/sign/persist failed: nothing sent and safe to retry.
-      db.transaction(() => {
-        if (unclaimBroadcastIntent(db, intentId)) {
-          appendAuditEvent(db, {
-            type: AuditEventType.TxFailed,
-            payload: { intentId, error: message },
-            actor: actorId,
-          });
-        }
-      })();
+      unclaimIdleBroadcast(db, intentId, actorId, message);
     }
 
     if (err instanceof AppError) throw err;
     throw new Error(message);
   } finally {
-    releaseExecution(intentId);
+    releaseExecution(lock);
   }
 }
