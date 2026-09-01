@@ -36,11 +36,3 @@ export function listApprovalsForIntent(db: Db, intentId: string): Approval[] {
 
   return rows.map(rowToApproval);
 }
-
-export function getApproval(db: Db, id: string): Approval | undefined {
-  const row = db
-    .prepare(`SELECT id, intent_id, approver_id, created_at FROM approvals WHERE id = ?`)
-    .get(id) as ApprovalRow | undefined;
-
-  return row ? rowToApproval(row) : undefined;
-}

@@ -1,9 +1,11 @@
+import { config } from "src/config.js";
 import { createMockMpcApp } from "src/mockMpc/api.js";
-import { CeremonyStore } from "src/mockMpc/ceremonies.js";
+import { CeremonyStore, MOCK_MPC_DEV_KEY } from "src/mockMpc/ceremonies.js";
+import { app as mockMpcIndexApp } from "src/mockMpc/index.js";
 import { CeremonyError, CeremonyStatus, unsignedTxToJson } from "src/mockMpc/types.js";
 import type { Hex, UnsignedTx } from "src/signers/types.js";
-import { addressFromNumber } from "src/utils/address.js";
-import { readJson } from "test/helpers/json.js";
+import { addressFromNumber, readJson } from "test/helpers/json.js";
+import { privateKeyToAccount } from "viem/accounts";
 import { describe, expect, it, vi } from "vitest";
 
 const apiKey = "dev-mpc-secret";
@@ -283,6 +285,18 @@ describe("mock MPC vendor API", () => {
     expect(await readJson<{ status: string }>(signing)).toEqual({
       requestId: "req-signing",
       status: CeremonyStatus.Signing,
+    });
+  });
+});
+
+describe("mock MPC index wiring", () => {
+  it("serves the wallet from config without starting a listener", async () => {
+    const res = await mockMpcIndexApp.request("/v1/wallet", {
+      headers: { authorization: `Bearer ${config.mockMpc.apiKey}` },
+    });
+    expect(res.status).toBe(200);
+    expect(await readJson<{ address: string }>(res)).toEqual({
+      address: privateKeyToAccount(MOCK_MPC_DEV_KEY).address,
     });
   });
 });

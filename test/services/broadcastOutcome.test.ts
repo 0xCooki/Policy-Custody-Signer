@@ -2,7 +2,7 @@ import { Asset, IntentStatus } from "src/domain/types.js";
 import { decodeSignedRawTx, hashesEqual, txMatchesIntent } from "src/services/broadcastOutcome.js";
 import { LocalKeySigner } from "src/signers/localKey.js";
 import type { Hex } from "src/signers/types.js";
-import { addressFromNumber } from "src/utils/address.js";
+import { addressFromNumber } from "test/helpers/json.js";
 import { describe, expect, it } from "vitest";
 
 describe("hashesEqual", () => {

@@ -114,3 +114,32 @@ export function failMismatch(
     throw new AppError(ApiErrorCode.ReconcileMismatch, error);
   }
 }
+
+export function applyReceipt(
+  db: Db,
+  input: {
+    intentId: string;
+    actorId: string;
+    txHash: Hex;
+    receipt: { status: string; blockNumber: bigint };
+  },
+): TransferIntent {
+  const failed = input.receipt.status !== "success";
+  markBroadcastOutcome(db, {
+    intentId: input.intentId,
+    actorId: input.actorId,
+    txHash: input.txHash,
+    status: failed ? IntentStatus.Failed : IntentStatus.Confirmed,
+    type: failed ? AuditEventType.TxFailed : AuditEventType.TxConfirmed,
+    payload: {
+      intentId: input.intentId,
+      txHash: input.txHash,
+      status: input.receipt.status,
+      blockNumber: input.receipt.blockNumber.toString(),
+      ...(failed ? { error: "receipt status is not success" } : {}),
+    },
+  });
+  const latest = requireIntent(db, input.intentId);
+  if (latest.status === IntentStatus.Confirmed) return latest;
+  throw new AppError(ApiErrorCode.TxReverted, "receipt status is not success");
+}

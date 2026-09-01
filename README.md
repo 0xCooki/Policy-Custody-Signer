@@ -58,18 +58,6 @@ SoftHSM is a lab stand-in for a bank HSM: production swaps the PKCS#11 `.so` for
 
 ---
 
-### What a bank replaces
-
-| Here | There |
-| --- | --- |
-| SoftHSM PKCS#11 module | Hardware HSM (same `SignerProvider` seam) |
-| Mock MPC vendor HTTP service | Taurus / Fireblocks (or similar) async signing API |
-| SQLite | Bank ledger / durable store |
-| Env API keys | IdP, mTLS, request signing |
-| Anvil | Permissioned or public EVM |
-
----
-
 ## Setup
 
 Requires **Node 25+**, **pnpm 11+**, and **Foundry** (`anvil` on your `PATH`).
@@ -79,7 +67,7 @@ cp .env.example .env
 pnpm install
 ```
 
-Anvil is required for the gated signing flow, `pnpm demo`, and `pnpm test` / `pnpm test:coverage`:
+Anvil is required for the gated signing flow, `pnpm demo`, and `pnpm test`:
 
 ```bash
 # terminal A
@@ -94,24 +82,18 @@ pnpm typecheck:tests
 pnpm dev
 ```
 
-Health check: `GET http://localhost:3000/health`
-
-Reset the local SQLite file: `pnpm db:reset`
+Local SQLite is disposable — `pnpm db:reset` after pull (schema is not migrated in place).
 
 ### Flow
 
-1. **Create wallet** — `admin` API key
-2. **Create intent** — `initiator` API key
-3. **Approve** — `approver` API key (maker ≠ checker; quorum from policy)
-4. **Execute** — `approver` or `admin` — sign, persist hash+raw, broadcast, confirm. One `broadcast` intent per wallet. An in-process lock covers claim through persist so reconcile can run once the hash is durable. The lock is per process; run a single API instance.
-5. **Reconcile** — `admin` `POST /intents/:id/reconcile` recovers a crashed `broadcast`: unclaim if nothing was signed, rebroadcast the stored raw tx if needed, then confirm or fail from the receipt. A mismatch leaves the row `broadcast` (hash+raw intact) so the wallet stays occupied; a reverted receipt still marks Failed. The signed raw tx is not returned on the API.
-6. **Audit** — `admin` `GET /audit` (`{ events, verified }`; `verified` is computed on the stored chain)
+1. **Create wallet** — `admin`
+2. **Create intent** — `initiator` (`POLICY_MAX_VALUE`, `POLICY_ALLOWLIST`)
+3. **Approve** — `approver` (maker ≠ checker; quorum from `POLICY_QUORUM`)
+4. **Execute** — `approver` or `admin` — sign, broadcast, confirm. One `broadcast` intent per wallet; run a single API instance.
+5. **Reconcile** — `admin` `POST /intents/:id/reconcile` recovers a crashed `broadcast`
+6. **Audit** — `admin` `GET /audit`
 
-Auth header: `Authorization: Bearer <key>` using keys from `.env` / `.env.example` (defaults: `dev-initiator`, `dev-approver`, `dev-admin`).
-
-On create, `fromWalletId` must exist; then destination/value policy (`POLICY_MAX_VALUE`, `POLICY_ALLOWLIST`) is evaluated. Quorum (`POLICY_QUORUM`) is applied on approve.
-
-`GET /intents/:id` (initiator of that intent, any approver, or admin) includes `events`: `{ id, type, payload, timestamp }` for audit rows whose payload `intentId` matches. Other initiators get the same 404 as a missing id. `actor` and chain hashes are omitted — this slice is not a verifiable chain. Admin `GET /audit` returns `{ events, verified }` where `verified` is computed server-side over the raw chain (including actor). Response events keep `prevHash` / `eventHash` and replace `actor` with `role`.
+Auth: `Authorization: Bearer <key>` (defaults: `dev-initiator`, `dev-approver`, `dev-admin`).
 
 ### Demo (Compose + SoftHSM)
 
@@ -120,30 +102,15 @@ docker compose up --build -d
 pnpm demo
 ```
 
-`pnpm demo` retries `GET /health` until the API is up (Compose starts the API only after Anvil is healthy). It talks to `http://127.0.0.1:$PORT` using **host** `.env` for API keys, allowlist destination, and Anvil RPC. Keep `POLICY_ALLOWLIST` in `.env` aligned with Compose (`.env.example` matches). It runs create wallet → fund signer → intent → approve → execute → audit, then prints `verified`, `auditHead` (last audit `eventHash`, not the EVM block), intent status, and `txHash`. It exits non-zero if the chain does not verify, the intent is not confirmed, or `txHash` is not a 32-byte hex hash. It also works against `pnpm dev` (LocalKey) with Anvil running.
-
-CI runs the same script **inside** the API container (`docker compose exec api pnpm demo`) in a job separate from the live PKCS#11 signer tests, so a demo failure does not skip `pnpm test:softhsm`.
-
-### SoftHSM (real PKCS#11)
-
-SoftHSM keeps the private key in a PKCS#11 token (lab stand-in for a bank HSM). Production swaps the `.so` for a hardware HSM module.
-
-Do not run `pnpm test:softhsm` while `docker compose up` is already running — both use the same SoftHSM volume, and PKCS#11 does not share a token across processes.
+Do not run `pnpm test:softhsm` while Compose is already up — both use the same SoftHSM volume.
 
 ```bash
-# Live PKCS#11 signer tests (one-shot compose run; starts Anvil itself)
 pnpm test:softhsm
 ```
 
-CI runs the live demo and `pnpm test:softhsm` as parallel jobs, each with its own Compose stack. Use `pnpm test:softhsm` locally when you only need the signer tests.
-
-Or on the host: install SoftHSM2, run `./scripts/init-softhsm.sh`, export the printed `SOFTHSM_*` / `SOFTHSM2_CONF` vars, set `SIGNER_BACKEND=softhsm`.
-
-Default `pnpm test` stays on LocalKey and skips SoftHSM live cases unless `SOFTHSM_MODULE_PATH` points at a real module.
+Or on the host: install SoftHSM2, run `./scripts/init-softhsm.sh`, export the printed `SOFTHSM_*` / `SOFTHSM2_CONF` vars, set `SIGNER_BACKEND=softhsm`. Default `pnpm test` stays on LocalKey.
 
 ### Mock MPC (vendor simulator)
-
-A separate HTTP service simulates a 2-of-3 custody vendor (async request + poll). It signs with a labelled Anvil #0 **dev key** after threshold availability; it is not real threshold cryptography.
 
 ```bash
 # terminal A — Anvil
@@ -158,7 +125,7 @@ SIGNER_BACKEND=mock-mpc pnpm dev
 
 Auth to the vendor: `Authorization: Bearer $MOCK_MPC_API_KEY` (default `dev-mpc-secret`).
 
-All three mock participants start online (threshold 2-of-3). Take a party offline to simulate `threshold_not_met`. A later request with the same idempotency key retries once enough participants are restored:
+All three mock participants start online (threshold 2-of-3). Take a party offline to simulate `threshold_not_met`:
 
 ```bash
 # 1-of-3 online — the next signing request fails
@@ -173,5 +140,3 @@ curl -X PUT http://127.0.0.1:3001/v1/participants \
   -H "content-type: application/json" \
   -d '{"available":[0,1]}'
 ```
-
-`GET /v1/participants` returns `{ threshold, participants, available }`.

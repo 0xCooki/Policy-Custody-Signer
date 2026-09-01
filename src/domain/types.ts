@@ -10,7 +10,6 @@ export type Role = (typeof Role)[keyof typeof Role];
 export const IntentStatus = {
   Pending: "pending",
   Approved: "approved",
-  Rejected: "rejected",
   Broadcast: "broadcast",
   Confirmed: "confirmed",
   Failed: "failed",

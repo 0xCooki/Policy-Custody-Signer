@@ -1,5 +1,4 @@
 import { ApiErrorCode, AuditEventType, Role } from "src/domain/types.js";
-import { addressFromNumber } from "src/utils/address.js";
 import { AppError } from "src/utils/errors.js";
 import { auditEventToJson, intentAuditToJson, intentToJson } from "src/utils/json.js";
 import { arrayFromCsv, extractApiKey } from "src/utils/string.js";
@@ -106,12 +105,5 @@ describe("auditEventToJson", () => {
         apiKeys,
       ).role,
     ).toBeNull();
-  });
-});
-
-describe("addressFromNumber", () => {
-  it("pads to a 20-byte address", () => {
-    expect(addressFromNumber(1)).toBe("0x0000000000000000000000000000000000000001");
-    expect(addressFromNumber(1).length).toBe(42);
   });
 });

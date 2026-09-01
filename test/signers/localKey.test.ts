@@ -1,6 +1,6 @@
 import { LocalKeySigner } from "src/signers/localKey.js";
 import type { Hex, UnsignedTx } from "src/signers/types.js";
-import { addressFromNumber } from "src/utils/address.js";
+import { addressFromNumber } from "test/helpers/json.js";
 import { describe, expect, it } from "vitest";
 
 const ANVIL_ACCOUNT_0 = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80" as Hex;

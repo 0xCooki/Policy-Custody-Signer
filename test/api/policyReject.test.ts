@@ -1,9 +1,9 @@
+import { randomUUID } from "node:crypto";
 import { app } from "src/api/index.js";
 import { listAuditEvents } from "src/db/audit.js";
 import { openDb } from "src/db/client.js";
-import { AuditEventType, PolicyReason } from "src/domain/types.js";
-import { addressFromNumber } from "src/utils/address.js";
-import { readJson, type WalletJson } from "test/helpers/json.js";
+import { ApiErrorCode, AuditEventType, PolicyReason } from "src/domain/types.js";
+import { addressFromNumber, readJson, type WalletJson } from "test/helpers/json.js";
 import { describe, expect, it } from "vitest";
 
 const adminHeaders = { Authorization: "Bearer dev-admin" };
@@ -55,5 +55,25 @@ describe("Policy rejection at API", () => {
     const events = listAuditEvents(openDb());
     const rejected = events.filter((e) => e.type === AuditEventType.PolicyRejected);
     expect(rejected.some((e) => e.payload.reason === PolicyReason.ToNotAllowed)).toBe(true);
+  });
+
+  it("returns 404 for an unknown fromWalletId and skips policy without audit events", async () => {
+    const before = listAuditEvents(openDb());
+
+    const res = await app.request("/intents", {
+      method: "POST",
+      headers: initiatorHeaders,
+      body: JSON.stringify({
+        fromWalletId: randomUUID(),
+        to: addressFromNumber(201),
+        value: (10n ** 15n).toString(),
+      }),
+    });
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({ error: ApiErrorCode.NotFound });
+
+    const added = listAuditEvents(openDb()).slice(before.length);
+    expect(added.some((e) => e.type === AuditEventType.IntentCreated)).toBe(false);
+    expect(added.some((e) => e.type === AuditEventType.PolicyRejected)).toBe(false);
   });
 });

@@ -24,11 +24,6 @@ export function releaseExecution(lock: ExecutionLock): void {
   }
 }
 
-export function isExecutionInFlight(intentId: string): boolean {
-  return inFlight.has(intentId);
-}
-
-/** Test helper: drop any leftover in-process claims. */
 export function resetExecutionLock(): void {
   inFlight.clear();
 }

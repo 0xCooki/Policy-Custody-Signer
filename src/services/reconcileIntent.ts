@@ -6,10 +6,10 @@ import { getWallet } from "src/db/wallets.js";
 import type { TransferIntent } from "src/domain/types.js";
 import { ApiErrorCode, AuditEventType, IntentStatus } from "src/domain/types.js";
 import {
+  applyReceipt,
   decodeSignedRawTx,
   failMismatch,
   hashesEqual,
-  markBroadcastOutcome,
   requireIntent,
   txMatchesIntent,
   unclaimIdleBroadcast,
@@ -132,25 +132,8 @@ export async function reconcileIntent(
       throw err;
     }
 
-    const failed = receipt.status !== "success";
-    markBroadcastOutcome(db, {
-      intentId: current.id,
-      actorId,
-      txHash,
-      status: failed ? IntentStatus.Failed : IntentStatus.Confirmed,
-      type: failed ? AuditEventType.TxFailed : AuditEventType.TxConfirmed,
-      payload: {
-        intentId: current.id,
-        txHash,
-        status: receipt.status,
-        blockNumber: receipt.blockNumber.toString(),
-        ...(failed ? { error: "receipt status is not success" } : {}),
-      },
-    });
-
-    const latest = requireIntent(db, current.id);
-    if (latest.status === IntentStatus.Confirmed) return { intent: latest, txHash };
-    throw new AppError(ApiErrorCode.TxReverted, "receipt status is not success");
+    const latest = applyReceipt(db, { intentId: current.id, actorId, txHash, receipt });
+    return { intent: latest, txHash };
   } finally {
     releaseExecution(lock);
   }

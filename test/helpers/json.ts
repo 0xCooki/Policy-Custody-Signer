@@ -1,6 +1,12 @@
-/** Typed JSON body helper — Hono's `Response.json()` is typed as `unknown`. */
+import type { Address } from "src/signers/types.js";
+import { padHex, toHex } from "viem";
+
 export async function readJson<T>(res: Response): Promise<T> {
   return (await res.json()) as T;
+}
+
+export function addressFromNumber(n: number | bigint): Address {
+  return padHex(toHex(n), { size: 20 });
 }
 
 export type WalletJson = { id: string; address: string };
