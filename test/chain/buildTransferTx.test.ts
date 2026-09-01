@@ -1,5 +1,5 @@
 import { config } from "src/config.js";
-import { addressFromNumber } from "src/utils/address.js";
+import { addressFromNumber } from "test/helpers/json.js";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const getTransactionCount = vi.fn();

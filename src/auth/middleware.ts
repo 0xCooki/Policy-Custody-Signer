@@ -5,7 +5,6 @@ import { config } from "src/config.js";
 import { ApiErrorCode, type Role } from "src/domain/types.js";
 import { extractApiKey } from "src/utils/string.js";
 
-// AuthN: attach actor or 401
 export const authMiddleware = createMiddleware<AuthEnv>(async (c, next) => {
   const apiKey = extractApiKey(c.req.header("authorization"), c.req.header("x-api-key"));
   const actor = resolveApiKey(apiKey, config.apiKeys);
@@ -14,7 +13,6 @@ export const authMiddleware = createMiddleware<AuthEnv>(async (c, next) => {
   await next();
 });
 
-// AuthZ: require role or 403
 export function requireRole(...roles: Role[]) {
   return createMiddleware<AuthEnv>(async (c, next) => {
     const actor = c.get("actor");

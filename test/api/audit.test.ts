@@ -3,10 +3,10 @@ import { app } from "src/api/index.js";
 import { openDb } from "src/db/client.js";
 import { createIntent } from "src/db/intents.js";
 import { ApiErrorCode, Asset, AuditEventType, IntentStatus, Role } from "src/domain/types.js";
-import { addressFromNumber } from "src/utils/address.js";
 import {
   type ApproveJson,
   type AuditJson,
+  addressFromNumber,
   type IntentJson,
   readJson,
   type WalletJson,

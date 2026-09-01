@@ -2,13 +2,18 @@ process.env.POLICY_QUORUM = "2";
 process.env.API_KEY_APPROVERS = "dev-approver,dev-approver-b";
 process.env.DATABASE_PATH = `./data/test-quorum-${Date.now()}.db`;
 
-import type { ApproveJson, ExecuteJson, IntentJson, WalletJson } from "test/helpers/json.js";
-import { readJson } from "test/helpers/json.js";
+import {
+  type ApproveJson,
+  addressFromNumber,
+  type ExecuteJson,
+  type IntentJson,
+  readJson,
+  type WalletJson,
+} from "test/helpers/json.js";
 
 const { app } = await import("src/api/index.js");
 const { publicClient } = await import("src/chain/client.js");
 const { ApiErrorCode, IntentStatus, PolicyReason } = await import("src/domain/types.js");
-const { addressFromNumber } = await import("src/utils/address.js");
 const { beforeAll, describe, expect, it } = await import("vitest");
 
 const adminHeaders = { Authorization: "Bearer dev-admin" };

@@ -5,7 +5,7 @@ import { CeremonyError } from "src/mockMpc/types.js";
 import { MockMpcSigner } from "src/signers/mockMpc.js";
 import { CeremonyStatus, fingerprintTx } from "src/signers/mockMpcProtocol.js";
 import { type Hex, SignerBackend, type UnsignedTx } from "src/signers/types.js";
-import { addressFromNumber } from "src/utils/address.js";
+import { addressFromNumber } from "test/helpers/json.js";
 import { isHex } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { describe, expect, it } from "vitest";

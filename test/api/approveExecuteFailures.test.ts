@@ -6,9 +6,13 @@ import { claimIntentForExecution, createIntent } from "src/db/intents.js";
 import { ApiErrorCode, Asset, IntentStatus, PolicyReason } from "src/domain/types.js";
 import * as executeIntentService from "src/services/executeIntent.js";
 import type { Hex } from "src/signers/types.js";
-import { addressFromNumber } from "src/utils/address.js";
 import { AppError } from "src/utils/errors.js";
-import { type IntentJson, readJson, type WalletJson } from "test/helpers/json.js";
+import {
+  addressFromNumber,
+  type IntentJson,
+  readJson,
+  type WalletJson,
+} from "test/helpers/json.js";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const adminHeaders = { Authorization: "Bearer dev-admin" };
@@ -196,6 +200,14 @@ describe("Approve and execute failures", () => {
     });
     expect(res.status).toBe(500);
     expect(await res.json()).toEqual({ error: "rpc down" });
+
+    vi.spyOn(executeIntentService, "executeIntent").mockRejectedValueOnce("boom");
+    const bare = await app.request(`/intents/${intent.id}/execute`, {
+      method: "POST",
+      headers: adminHeaders,
+    });
+    expect(bare.status).toBe(500);
+    expect(await bare.json()).toEqual({ error: "failed" });
   });
 
   it("allows an approver to call execute", async () => {

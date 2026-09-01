@@ -10,9 +10,9 @@ import { ApiErrorCode, Asset, AuditEventType, IntentStatus } from "src/domain/ty
 import { executeIntent } from "src/services/executeIntent.js";
 import { acquireExecution, resetExecutionLock } from "src/services/executionLock.js";
 import { LocalKeySigner } from "src/signers/localKey.js";
-import type { SignerProvider } from "src/signers/types.js";
+import type { Hex, SignerProvider } from "src/signers/types.js";
 import { SignerBackend } from "src/signers/types.js";
-import { addressFromNumber } from "src/utils/address.js";
+import { addressFromNumber } from "test/helpers/json.js";
 import { keccak256 } from "viem";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -211,6 +211,28 @@ describe("executeIntent", () => {
       ),
     ).rejects.toMatchObject({ code: ApiErrorCode.ReconcileMismatch });
     expect(send).not.toHaveBeenCalled();
+    expect(intentsDb.getIntent(db, intent.id)?.status).toBe(IntentStatus.Approved);
+  });
+
+  it("throws when the broadcast hash does not match the signed payload", async () => {
+    const { intent } = seedApprovedIntent();
+    vi.spyOn(buildTransferTx, "buildTransferTx").mockResolvedValueOnce(sampleUnsigned);
+    vi.spyOn(broadcast, "broadcastSignedTx").mockResolvedValueOnce("0xdead" as Hex);
+
+    await expect(executeIntent(db, stubSigner, intent.id, "dev-admin")).rejects.toThrow(
+      /broadcast hash mismatch/,
+    );
+    expect(intentsDb.getIntent(db, intent.id)?.status).toBe(IntentStatus.Broadcast);
+  });
+
+  it("throws InvalidStatus when persist fails after claim", async () => {
+    const { intent } = seedApprovedIntent();
+    vi.spyOn(buildTransferTx, "buildTransferTx").mockResolvedValueOnce(sampleUnsigned);
+    vi.spyOn(intentsDb, "persistBroadcastSignature").mockReturnValueOnce(false);
+
+    await expect(executeIntent(db, stubSigner, intent.id, "dev-admin")).rejects.toMatchObject({
+      code: ApiErrorCode.InvalidStatus,
+    });
     expect(intentsDb.getIntent(db, intent.id)?.status).toBe(IntentStatus.Approved);
   });
 });

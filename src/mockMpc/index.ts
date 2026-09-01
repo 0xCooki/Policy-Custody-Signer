@@ -17,6 +17,7 @@ const app = createMockMpcApp({
 
 export { app };
 
+/* v8 ignore start */
 const isMain = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
 
 if (isMain) {
@@ -24,3 +25,4 @@ if (isMain) {
     console.log(`mock-mpc listening on http://localhost:${info.port}`);
   });
 }
+/* v8 ignore stop */

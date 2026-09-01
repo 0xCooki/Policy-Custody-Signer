@@ -3,6 +3,12 @@ import { ApiErrorCode } from "src/domain/types.js";
 import { describe, expect, it } from "vitest";
 
 describe("Auth middleware", () => {
+  it("responds to GET /health", async () => {
+    const res = await app.request("/health");
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ ok: true });
+  });
+
   it("returns 401 when API key is missing", async () => {
     const res = await app.request("/wallets", { method: "GET" });
     expect(res.status).toBe(401);
@@ -33,5 +39,14 @@ describe("Auth middleware", () => {
       headers: { "x-api-key": "dev-admin" },
     });
     expect(res.status).toBe(200);
+  });
+
+  it("lists wallets for admin", async () => {
+    const res = await app.request("/wallets", {
+      method: "GET",
+      headers: { Authorization: "Bearer dev-admin" },
+    });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual(expect.any(Array));
   });
 });

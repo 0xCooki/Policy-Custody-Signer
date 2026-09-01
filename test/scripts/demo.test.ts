@@ -2,7 +2,7 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { isCliEntry, runDemo } from "scripts/demo.js";
 import { AuditEventType, IntentStatus } from "src/domain/types.js";
-import { addressFromNumber } from "src/utils/address.js";
+import { addressFromNumber } from "test/helpers/json.js";
 import { describe, expect, it } from "vitest";
 
 const to = addressFromNumber(200);

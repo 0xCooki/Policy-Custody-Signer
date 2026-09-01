@@ -15,7 +15,6 @@ export function openDb(databasePath = config.databasePath): Db {
   const db = new Database(databasePath);
 
   db.pragma("journal_mode = WAL");
-  db.pragma("foreign_keys = ON");
 
   migrate(db);
   return db;

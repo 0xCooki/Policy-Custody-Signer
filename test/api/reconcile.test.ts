@@ -4,9 +4,9 @@ import { openDb } from "src/db/client.js";
 import { updateIntentStatus } from "src/db/intents.js";
 import { ApiErrorCode, IntentStatus } from "src/domain/types.js";
 import * as reconcileIntentService from "src/services/reconcileIntent.js";
-import { addressFromNumber } from "src/utils/address.js";
 import { AppError } from "src/utils/errors.js";
 import {
+  addressFromNumber,
   type IntentJson,
   type ReconcileJson,
   readJson,

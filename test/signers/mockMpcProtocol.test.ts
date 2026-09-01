@@ -4,7 +4,7 @@ import {
   unsignedTxToJson,
 } from "src/signers/mockMpcProtocol.js";
 import type { Hex, UnsignedTx } from "src/signers/types.js";
-import { addressFromNumber } from "src/utils/address.js";
+import { addressFromNumber } from "test/helpers/json.js";
 import { describe, expect, it } from "vitest";
 
 const sampleTx: UnsignedTx = {

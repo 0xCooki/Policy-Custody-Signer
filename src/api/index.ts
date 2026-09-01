@@ -59,6 +59,11 @@ function statusForAppError(err: AppError): 400 | 403 | 404 | 409 | 422 {
   }
 }
 
+function errorBody(err: unknown, fallback: 400 | 500) {
+  if (err instanceof AppError) return { json: { error: err.code }, status: statusForAppError(err) };
+  return { json: { error: err instanceof Error ? err.message : "failed" }, status: fallback };
+}
+
 app.get("/health", (c) =>
   c.json({
     ok: true,
@@ -66,7 +71,6 @@ app.get("/health", (c) =>
   }),
 );
 
-// Creates the same wallet with a different id each call
 app.post("/wallets", authMiddleware, requireRole(Role.Admin), async (c) => {
   const address = await signer.getAddress();
   const wallet = createWallet(db, {
@@ -79,7 +83,6 @@ app.post("/wallets", authMiddleware, requireRole(Role.Admin), async (c) => {
 
 app.get("/wallets", authMiddleware, requireRole(Role.Admin), (c) => c.json(listWallets(db)));
 
-// POST intents, body: { fromWalletId, to, value } where the value as string is in JSON
 app.post("/intents", authMiddleware, requireRole(Role.Initiator), async (c) => {
   const body = await c.req.json<{
     fromWalletId: string;
@@ -131,11 +134,8 @@ app.get("/intents/:id", authMiddleware, (c) => {
     actor.role === Role.Admin ||
     actor.role === Role.Approver ||
     (actor.role === Role.Initiator && intent.initiatorId === actor.actorId);
-  // Same 404 as a missing id so initiators cannot probe whether another intent exists.
   if (!allowed) return c.json({ error: ApiErrorCode.NotFound }, 404);
 
-  // Related rows from the global hash chain. Omit actor and hashes;
-  // this subset is not a verifiable chain — use admin GET /audit for that.
   return c.json({
     ...intentToJson(intent),
     events: listAuditEventsForIntent(db, intent.id).map(intentAuditToJson),
@@ -162,11 +162,8 @@ app.post("/intents/:id/approve", authMiddleware, requireRole(Role.Approver), asy
       quorumMet: result.quorumMet,
     });
   } catch (err) {
-    if (err instanceof AppError) {
-      return c.json({ error: err.code }, statusForAppError(err));
-    }
-    const message = err instanceof Error ? err.message : "approve failed";
-    return c.json({ error: message }, 400);
+    const { json, status } = errorBody(err, 400);
+    return c.json(json, status);
   }
 });
 
@@ -182,11 +179,8 @@ app.post(
       const result = await executeIntent(db, signer, intent.id, actor.actorId);
       return c.json({ intent: intentToJson(result.intent), txHash: result.txHash });
     } catch (err) {
-      if (err instanceof AppError) {
-        return c.json({ error: err.code }, statusForAppError(err));
-      }
-      const message = err instanceof Error ? err.message : "execute failed";
-      return c.json({ error: message }, 500);
+      const { json, status } = errorBody(err, 500);
+      return c.json(json, status);
     }
   },
 );
@@ -202,16 +196,14 @@ app.post("/intents/:id/reconcile", authMiddleware, requireRole(Role.Admin), asyn
       ...(result.txHash !== undefined ? { txHash: result.txHash } : {}),
     });
   } catch (err) {
-    if (err instanceof AppError) {
-      return c.json({ error: err.code }, statusForAppError(err));
-    }
-    const message = err instanceof Error ? err.message : "reconcile failed";
-    return c.json({ error: message }, 500);
+    const { json, status } = errorBody(err, 500);
+    return c.json(json, status);
   }
 });
 
 export { app };
 
+/* v8 ignore start */
 const isMain = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
 
 if (isMain) {
@@ -219,3 +211,4 @@ if (isMain) {
     console.log(`listening on http://localhost:${info.port}`);
   });
 }
+/* v8 ignore stop */

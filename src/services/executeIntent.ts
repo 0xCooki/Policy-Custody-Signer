@@ -12,10 +12,9 @@ import { getWallet } from "src/db/wallets.js";
 import type { TransferIntent } from "src/domain/types.js";
 import { ApiErrorCode, AuditEventType, IntentStatus } from "src/domain/types.js";
 import {
+  applyReceipt,
   decodeSignedRawTx,
   hashesEqual,
-  markBroadcastOutcome,
-  requireIntent,
   txMatchesIntent,
   unclaimIdleBroadcast,
 } from "src/services/broadcastOutcome.js";
@@ -110,25 +109,8 @@ export async function executeIntent(
     });
 
     const receipt = await waitForTx(txHash);
-    const failed = receipt.status !== "success";
-    markBroadcastOutcome(db, {
-      intentId,
-      actorId,
-      txHash,
-      status: failed ? IntentStatus.Failed : IntentStatus.Confirmed,
-      type: failed ? AuditEventType.TxFailed : AuditEventType.TxConfirmed,
-      payload: {
-        intentId,
-        txHash,
-        status: receipt.status,
-        blockNumber: receipt.blockNumber.toString(),
-        ...(failed ? { error: "receipt status is not success" } : {}),
-      },
-    });
-
-    const updated = requireIntent(db, intentId);
-    if (updated.status === IntentStatus.Confirmed) return { intent: updated, txHash };
-    throw new AppError(ApiErrorCode.TxReverted, "receipt status is not success");
+    const updated = applyReceipt(db, { intentId, actorId, txHash, receipt });
+    return { intent: updated, txHash };
   } catch (err) {
     const message = err instanceof Error ? err.message : "execute failed";
     if (claimed && !signed) unclaimIdleBroadcast(db, intentId, actorId, message);

@@ -70,10 +70,6 @@ export function getIntent(db: Db, id: string): TransferIntent | undefined {
   return row ? rowToIntent(row) : undefined;
 }
 
-export function updateIntentExecution(db: Db, id: string, status: IntentStatus, txHash: Hex): void {
-  db.prepare(`UPDATE intents SET status = ?, tx_hash = ? WHERE id = ?`).run(status, txHash, id);
-}
-
 export function getIntentSignedRawTx(db: Db, id: string): Hex | undefined {
   const row = db.prepare(`SELECT signed_raw_tx FROM intents WHERE id = ?`).get(id) as
     | { signed_raw_tx: string | null }

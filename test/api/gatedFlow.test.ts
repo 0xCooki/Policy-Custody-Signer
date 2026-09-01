@@ -5,9 +5,9 @@ import { listAuditEvents } from "src/db/audit.js";
 import { openDb } from "src/db/client.js";
 import { updateIntentStatus } from "src/db/intents.js";
 import { AuditEventType, IntentStatus } from "src/domain/types.js";
-import { addressFromNumber } from "src/utils/address.js";
 import {
   type ApproveJson,
+  addressFromNumber,
   type ExecuteJson,
   type IntentJson,
   type ReconcileJson,

@@ -6,7 +6,7 @@ import {
   type ParticipantId,
 } from "src/mockMpc/types.js";
 import type { Hex, UnsignedTx } from "src/signers/types.js";
-import { addressFromNumber } from "src/utils/address.js";
+import { addressFromNumber } from "test/helpers/json.js";
 import { describe, expect, it, vi } from "vitest";
 
 const sampleTx: UnsignedTx = {

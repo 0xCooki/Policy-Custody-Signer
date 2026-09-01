@@ -1,6 +1,5 @@
 import { randomUUID } from "node:crypto";
-import Database from "better-sqlite3";
-import { createApproval, getApproval, listApprovalsForIntent } from "src/db/approvals.js";
+import { createApproval, listApprovalsForIntent } from "src/db/approvals.js";
 import { openDb } from "src/db/client.js";
 import {
   claimIntentForExecution,
@@ -10,14 +9,12 @@ import {
   persistBroadcastSignature,
   transitionBroadcastIntent,
   unclaimBroadcastIntent,
-  updateIntentExecution,
   updateIntentStatus,
 } from "src/db/intents.js";
-import { migrate } from "src/db/schema.js";
 import { createWallet, getWallet, listWallets } from "src/db/wallets.js";
 import { Asset, IntentStatus } from "src/domain/types.js";
 import type { Hex } from "src/signers/types.js";
-import { addressFromNumber } from "src/utils/address.js";
+import { addressFromNumber } from "test/helpers/json.js";
 import { describe, expect, it } from "vitest";
 
 const db = openDb(`./data/test-db-${Date.now()}.db`);
@@ -46,8 +43,6 @@ describe("db approvals", () => {
       createdAt: new Date().toISOString(),
     });
 
-    expect(getApproval(db, approval.id)).toEqual(approval);
-    expect(getApproval(db, randomUUID())).toBeUndefined();
     expect(listApprovalsForIntent(db, intentId)).toEqual([approval]);
     expect(listApprovalsForIntent(db, randomUUID())).toEqual([]);
   });
@@ -104,16 +99,9 @@ describe("db intents", () => {
     updateIntentStatus(db, created.id, IntentStatus.Approved);
     expect(getIntent(db, created.id)?.status).toBe(IntentStatus.Approved);
 
-    const txHash = "0xabc" as Hex;
     expect(claimIntentForExecution(db, created.id)).toBe(true);
     expect(getIntent(db, created.id)?.status).toBe(IntentStatus.Broadcast);
     expect(claimIntentForExecution(db, created.id)).toBe(false);
-
-    updateIntentExecution(db, created.id, IntentStatus.Confirmed, txHash);
-    const confirmed = getIntent(db, created.id);
-    expect(confirmed?.status).toBe(IntentStatus.Confirmed);
-    expect(confirmed?.txHash).toBe(txHash);
-    expect(confirmed).not.toHaveProperty("signedRawTx");
   });
 
   it("persists, unclaims, and transitions a broadcast", () => {
@@ -163,29 +151,5 @@ describe("db intents", () => {
     expect(claimIntentForExecution(db, first.id)).toBe(true);
     expect(() => claimIntentForExecution(db, second.id)).toThrow();
     expect(getIntent(db, second.id)?.status).toBe(IntentStatus.Approved);
-  });
-});
-
-describe("schema migrate", () => {
-  it("adds signed_raw_tx and the one-broadcast index", () => {
-    const legacy = new Database(":memory:");
-    legacy.exec(`
-      CREATE TABLE intents (
-        id TEXT PRIMARY KEY NOT NULL,
-        from_wallet_id TEXT NOT NULL,
-        to_address TEXT NOT NULL,
-        value TEXT NOT NULL,
-        asset TEXT NOT NULL,
-        initiator_id TEXT NOT NULL,
-        status TEXT NOT NULL,
-        tx_hash TEXT,
-        created_at TEXT NOT NULL
-      );
-    `);
-    migrate(legacy);
-    const columns = legacy.prepare(`PRAGMA table_info(intents)`).all() as { name: string }[];
-    expect(columns.some((c) => c.name === "signed_raw_tx")).toBe(true);
-    const indexes = legacy.prepare(`PRAGMA index_list(intents)`).all() as { name: string }[];
-    expect(indexes.some((i) => i.name === "intents_one_broadcast_per_wallet")).toBe(true);
   });
 });

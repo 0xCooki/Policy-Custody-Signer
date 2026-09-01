@@ -1,99 +1,95 @@
 import fc from "fast-check";
 import { PolicyReason } from "src/domain/types.js";
 import { evaluateApprove, evaluateCreate } from "src/policy/engine.js";
-import { addressFromNumber } from "src/utils/address.js";
+import { addressFromNumber } from "test/helpers/json.js";
 import { describe, expect, it } from "vitest";
 
 const runs = 1000;
 const initiatorId = "dev-initiator-a";
 const approverIdA = "dev-approver-a";
 const approverIdB = "dev-approver-b";
-const existingApproverIds = [approverIdB];
 const allowed = addressFromNumber(200);
 const maxValue = 10n ** 18n;
 const policy = { maxValue, allowlist: [allowed], quorum: 2 };
 
 describe("Engine", () => {
-  it("Fuzz: evaluateCreate rejects values over max", () => {
+  it("rejects values over max", () => {
     fc.assert(
       fc.property(fc.bigInt({ min: policy.maxValue + 1n }), (value) => {
-        const result = evaluateCreate({ to: allowed, value: value }, policy);
-        expect(result.ok).toBe(false);
-        if (!result.ok) expect(result.reason).toBe(PolicyReason.ValueOverMax);
+        expect(evaluateCreate({ to: allowed, value }, policy)).toEqual({
+          ok: false,
+          reason: PolicyReason.ValueOverMax,
+        });
       }),
       { numRuns: runs },
     );
   });
 
-  it("Fuzz: evaluateCreate rejects non-allowlisted recipients", () => {
+  it("rejects non-allowlisted recipients", () => {
     fc.assert(
       fc.property(
         fc.bigInt({ min: 0n, max: 2n ** 160n - 1n }).filter((n) => n !== 200n),
-        (value) => {
-          const result = evaluateCreate({ to: addressFromNumber(value), value: maxValue }, policy);
-          expect(result.ok).toBe(false);
-          if (!result.ok) expect(result.reason).toBe(PolicyReason.ToNotAllowed);
+        (n) => {
+          expect(evaluateCreate({ to: addressFromNumber(n), value: maxValue }, policy)).toEqual({
+            ok: false,
+            reason: PolicyReason.ToNotAllowed,
+          });
         },
       ),
       { numRuns: runs },
     );
   });
 
-  it("Fuzz: evaluateCreate allows values under max and allowlisted recipient", () => {
+  it("allows values at or under max to an allowlisted recipient", () => {
     fc.assert(
       fc.property(fc.bigInt({ max: policy.maxValue }), (value) => {
-        const result = evaluateCreate({ to: allowed, value: value }, policy);
-        expect(result.ok).toBe(true);
+        expect(evaluateCreate({ to: allowed, value }, policy)).toEqual({ ok: true });
       }),
       { numRuns: runs },
     );
   });
 
-  it("Unit: evaluateApprove rejects self approval", () => {
+  it("rejects self approval", () => {
     const result = evaluateApprove(
       {
-        initiatorId: initiatorId,
+        initiatorId,
         approverId: initiatorId,
-        existingApproverIds: existingApproverIds,
+        existingApproverIds: [approverIdB],
       },
       policy,
     );
-    expect(result.ok).toBe(false);
-    if (!result.ok) expect(result.reason).toBe(PolicyReason.SelfApproval);
+    expect(result).toEqual({ ok: false, reason: PolicyReason.SelfApproval });
   });
 
-  it("Unit: evaluateApprove rejects duplicate approval", () => {
+  it("rejects duplicate approval", () => {
     const result = evaluateApprove(
       {
-        initiatorId: initiatorId,
+        initiatorId,
         approverId: approverIdB,
-        existingApproverIds: existingApproverIds,
+        existingApproverIds: [approverIdB],
       },
       policy,
     );
-    expect(result.ok).toBe(false);
-    if (!result.ok) expect(result.reason).toBe(PolicyReason.DuplicateApproval);
+    expect(result).toEqual({ ok: false, reason: PolicyReason.DuplicateApproval });
   });
 
-  it("Unit: evaluateApprove allows first approval approval", () => {
+  it("leaves quorum unmet on the first of two approvals", () => {
     const result = evaluateApprove(
-      { initiatorId: initiatorId, approverId: approverIdA, existingApproverIds: [] },
+      { initiatorId, approverId: approverIdA, existingApproverIds: [] },
       policy,
     );
-    expect(result.ok).toBe(true);
-    if (result.ok) expect(result.quorumMet).toBe(false);
+    expect(result).toEqual({ ok: true, quorumMet: false });
   });
 
-  it("Unit: evaluateApprove allows first second approval", () => {
+  it("meets quorum on the second distinct approval", () => {
     const result = evaluateApprove(
       {
-        initiatorId: initiatorId,
+        initiatorId,
         approverId: approverIdA,
-        existingApproverIds: existingApproverIds,
+        existingApproverIds: [approverIdB],
       },
       policy,
     );
-    expect(result.ok).toBe(true);
-    if (result.ok) expect(result.quorumMet).toBe(true);
+    expect(result).toEqual({ ok: true, quorumMet: true });
   });
 });

@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import type { Pkcs11Client, SoftHsmCfg } from "src/signers/pkcs11Client.js";
 import { SoftHsmSigner } from "src/signers/softHsm.js";
 import type { Hex, UnsignedTx } from "src/signers/types.js";
-import { addressFromNumber } from "src/utils/address.js";
+import { addressFromNumber } from "test/helpers/json.js";
 import {
   bytesToBigInt,
   hexToBytes,

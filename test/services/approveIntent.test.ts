@@ -1,13 +1,12 @@
 import { randomUUID } from "node:crypto";
 import { openDb } from "src/db/client.js";
-import * as intentsDb from "src/db/intents.js";
-import { createIntent } from "src/db/intents.js";
+import { createIntent, updateIntentStatus } from "src/db/intents.js";
 import { createWallet } from "src/db/wallets.js";
 import { ApiErrorCode, Asset, IntentStatus, PolicyReason } from "src/domain/types.js";
 import type { PolicyConfig } from "src/policy/types.js";
 import { approveIntent } from "src/services/approveIntent.js";
-import { addressFromNumber } from "src/utils/address.js";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { addressFromNumber } from "test/helpers/json.js";
+import { describe, expect, it } from "vitest";
 
 const db = openDb(`./data/test-approve-${Date.now()}.db`);
 
@@ -16,10 +15,6 @@ const policy: PolicyConfig = {
   allowlist: [addressFromNumber(200)],
   quorum: 1,
 };
-
-afterEach(() => {
-  vi.restoreAllMocks();
-});
 
 function seedPendingIntent(initiatorId = "dev-initiator") {
   const wallet = createWallet(db, {
@@ -59,7 +54,7 @@ describe("approveIntent", () => {
 
   it("throws InvalidStatus when intent is not pending", () => {
     const intent = seedPendingIntent();
-    intentsDb.updateIntentStatus(db, intent.id, IntentStatus.Approved);
+    updateIntentStatus(db, intent.id, IntentStatus.Approved);
     expect(() =>
       approveIntent(db, policy, { intentId: intent.id, approverId: "dev-approver" }),
     ).toThrow(expect.objectContaining({ code: ApiErrorCode.InvalidStatus }));
@@ -70,15 +65,6 @@ describe("approveIntent", () => {
     expect(() =>
       approveIntent(db, policy, { intentId: intent.id, approverId: "dev-approver" }),
     ).toThrow(expect.objectContaining({ code: PolicyReason.SelfApproval }));
-  });
-
-  it("throws NotFound when the intent disappears after update", () => {
-    const intent = seedPendingIntent();
-    vi.spyOn(intentsDb, "getIntent").mockReturnValueOnce(intent).mockReturnValueOnce(undefined);
-
-    expect(() =>
-      approveIntent(db, policy, { intentId: intent.id, approverId: "dev-approver" }),
-    ).toThrow(expect.objectContaining({ code: ApiErrorCode.NotFound }));
   });
 
   it("leaves the intent pending when quorum is not yet met", () => {
